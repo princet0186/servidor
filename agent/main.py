@@ -1,9 +1,23 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from streaming import router as streaming_router
+from models import (
+    SimulateRequest, ActionRequest, Incident, IncidentStatus,
+    StepStatus, AuditEventType, RiskLevel
+)
+from state import (
+    store_incident, get_active_incident, get_incident, get_all_incidents,
+    set_failure_active, is_failure_active, add_audit, get_stream_queue,
+    clear_active_incident
+)
 from detection import check_anomalies
+from blast_radius import calculate_blast_radius
+from remediation import generate_remediation_plan, execute_step, check_and_resolve
+from trust_matrix import validate_action, get_step_approval_requirement
+from audit import get_audit_trail, get_full_audit
+from streaming import router as streaming_router
+import asyncio
 
-app = FastAPI(title="Servidor Agent Core")
+app = FastAPI(title="Servidor Agent Core", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -15,26 +29,173 @@ app.add_middleware(
 
 app.include_router(streaming_router)
 
+
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "service": "agent-core"}
+    return {"status": "healthy", "service": "servidor-agent-core", "version": "2.0.0"}
+
 
 @app.get("/api/v1/status")
 def get_status():
-    # In a real scenario, this would query Dynatrace MCP
-    # For now, we mock the anomaly detection based on our trigger
     anomalies = check_anomalies()
+    active = get_active_incident()
     return {
-        "vitals_ingestion": "error" if anomalies else "healthy",
-        "medication_alerts": "healthy",
-        "lab_routing": "healthy",
-        "patient_portal": "healthy",
-        "active_anomalies": anomalies
+        "services": {
+            "vitals_ingestion": "error" if anomalies else "healthy",
+            "medication_alerts": "healthy",
+            "lab_routing": "healthy",
+            "patient_portal": "healthy",
+        },
+        "active_incident": active.incident_id if active else None,
+        "incident_status": active.status.value if active else "none",
+        "patients_at_risk": active.blast_radius.patients_at_risk if active and active.blast_radius else 0,
+        "anomaly_count": len(anomalies),
     }
 
+
+async def _run_agent_pipeline(incident: Incident, anomaly: dict):
+    q = get_stream_queue()
+
+    incident.status = IncidentStatus.ANALYZING
+    add_audit(incident.incident_id, AuditEventType.DETECTION, f"Anomaly detected: {anomaly['problem']} on {anomaly['service']}", confidence=0.98)
+    await q.put(f"🚨 INCIDENT {incident.incident_id} — Anomaly detected on {anomaly['service']}")
+    await asyncio.sleep(0.5)
+
+    br = await calculate_blast_radius(incident.incident_id, anomaly)
+    incident.blast_radius = br
+
+    plan = await generate_remediation_plan(incident.incident_id, anomaly)
+    incident.remediation_plan = plan
+    incident.status = IncidentStatus.PLAN_READY
+    store_incident(incident)
+
+    for step in plan:
+        req = get_step_approval_requirement(step.risk_level)
+        if req["auto_execute"]:
+            if req["delay_seconds"] > 0:
+                await q.put(f"⏱️  Auto-executing step {step.order} in {req['delay_seconds']}s (LOW risk)...")
+                await asyncio.sleep(req["delay_seconds"])
+            step.status = StepStatus.APPROVED
+            add_audit(incident.incident_id, AuditEventType.APPROVAL, f"Auto-approved: {step.description}", actor="trust-matrix")
+            await execute_step(incident.incident_id, step)
+
+    remaining = [s for s in plan if s.status == StepStatus.PENDING]
+    if not remaining:
+        await check_and_resolve(incident.incident_id)
+
+
 @app.post("/api/v1/simulate/failure")
-def trigger_failure():
-    # Set a flag to simulate a Dynatrace anomaly
-    with open("/tmp/simulated_failure.flag", "w") as f:
-        f.write("active")
-    return {"status": "failure_simulated", "message": "Memory pressure on vitals-ingestion simulated."}
+async def trigger_failure(background_tasks: BackgroundTasks, request: SimulateRequest = SimulateRequest()):
+    if get_active_incident():
+        raise HTTPException(400, "An incident is already active. Resolve it first.")
+
+    set_failure_active(True)
+    anomalies = check_anomalies()
+    if not anomalies:
+        raise HTTPException(500, "Failed to generate anomaly")
+
+    incident = Incident(anomaly=anomalies[0])
+    store_incident(incident)
+
+    background_tasks.add_task(_run_agent_pipeline, incident, anomalies[0])
+
+    return {
+        "status": "failure_simulated",
+        "incident_id": incident.incident_id,
+        "message": f"Memory pressure on {request.service} simulated. Agent pipeline started.",
+    }
+
+
+@app.get("/api/v1/incidents")
+def list_incidents():
+    return [inc.model_dump() for inc in get_all_incidents()]
+
+
+@app.get("/api/v1/incidents/{incident_id}")
+def get_incident_detail(incident_id: str):
+    inc = get_incident(incident_id)
+    if not inc:
+        raise HTTPException(404, "Incident not found")
+    return inc.model_dump()
+
+
+@app.post("/api/v1/incidents/{incident_id}/approve/{step_order}")
+async def approve_step(incident_id: str, step_order: int, background_tasks: BackgroundTasks):
+    inc = get_incident(incident_id)
+    if not inc:
+        raise HTTPException(404, "Incident not found")
+
+    step = next((s for s in inc.remediation_plan if s.order == step_order), None)
+    if not step:
+        raise HTTPException(404, f"Step {step_order} not found")
+    if step.status != StepStatus.PENDING:
+        raise HTTPException(400, f"Step {step_order} is already {step.status.value}")
+
+    step.status = StepStatus.APPROVED
+    add_audit(incident_id, AuditEventType.APPROVAL, f"Approved by admin: {step.description}", actor="admin@hospital.demo")
+
+    q = get_stream_queue()
+    await q.put(f"✅ Step {step.order} approved by admin: {step.description}")
+
+    async def _execute_and_check():
+        await execute_step(incident_id, step)
+        await check_and_resolve(incident_id)
+
+    background_tasks.add_task(_execute_and_check)
+
+    return {"status": "approved", "step": step.order, "action": step.description}
+
+
+@app.post("/api/v1/incidents/{incident_id}/reject/{step_order}")
+async def reject_step(incident_id: str, step_order: int):
+    inc = get_incident(incident_id)
+    if not inc:
+        raise HTTPException(404, "Incident not found")
+
+    step = next((s for s in inc.remediation_plan if s.order == step_order), None)
+    if not step:
+        raise HTTPException(404, f"Step {step_order} not found")
+    if step.status != StepStatus.PENDING:
+        raise HTTPException(400, f"Step {step_order} is already {step.status.value}")
+
+    step.status = StepStatus.REJECTED
+    add_audit(incident_id, AuditEventType.REJECTION, f"Rejected by admin: {step.description}", actor="admin@hospital.demo")
+
+    q = get_stream_queue()
+    await q.put(f"❌ Step {step.order} rejected by admin: {step.description}")
+
+    await check_and_resolve(incident_id)
+
+    return {"status": "rejected", "step": step.order, "action": step.description}
+
+
+@app.post("/api/v1/actions/validate")
+async def validate_custom_action(request: ActionRequest):
+    active = get_active_incident()
+    incident_id = active.incident_id if active else None
+
+    refusal = await validate_action(request, incident_id)
+    if refusal:
+        return {"allowed": False, "refusal": refusal.model_dump()}
+
+    return {"allowed": True, "action": request.action, "message": "Action permitted."}
+
+
+@app.post("/api/v1/incidents/{incident_id}/reset")
+async def reset_incident(incident_id: str):
+    set_failure_active(False)
+    clear_active_incident()
+    return {"status": "reset", "message": "Incident cleared. System ready for next simulation."}
+
+
+@app.get("/api/v1/audit")
+def get_audit():
+    return get_full_audit()
+
+
+@app.get("/api/v1/audit/{incident_id}")
+def get_incident_audit(incident_id: str):
+    trail = get_audit_trail(incident_id)
+    if not trail:
+        raise HTTPException(404, "No audit trail found for this incident")
+    return trail
