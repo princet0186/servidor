@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  agent-backend:
+    build: 
+      context: ./agent
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./agent:/app
+
+  vitals-ingestion:
+    build:
+      context: ./services/vitals-ingestion
+    ports:
+      - "8001:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  medication-alerts:
+    build:
+      context: ./services/medication-alerts
+    ports:
+      - "8002:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  lab-routing:
+    build:
+      context: ./services/lab-routing
+    ports:
+      - "8003:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  patient-portal:
+    build:
+      context: ./services/patient-portal
+    ports:
+      - "8004:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
