@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
 
 jobs:
   build:
@@ -18,7 +18,7 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Build Docker images via docker-compose
-      run: docker-compose build
+      run: docker compose build
 
     # You can uncomment and adjust the steps below once you add unit tests (e.g., using pytest).
     # - name: Set up Python
