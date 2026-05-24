@@ -1,0 +1,6 @@
+{
+  "vitals-ingestion-svc": "CUSTOM_DEVICE-E8EDE17575DB1781",
+  "medication-alerts-svc": "CUSTOM_DEVICE-8E12B16719C4CDB2",
+  "lab-routing-svc": "CUSTOM_DEVICE-80B7ACA44D6B4EDC",
+  "patient-portal-svc": "CUSTOM_DEVICE-CEEED4AB0D9BAFAE"
+}
