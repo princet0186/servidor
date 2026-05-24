@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from models import (
     SimulateRequest, ActionRequest, Incident, IncidentStatus,
     StepStatus, AuditEventType, RiskLevel
@@ -15,9 +16,42 @@ from remediation import generate_remediation_plan, execute_step, check_and_resol
 from trust_matrix import validate_action, get_step_approval_requirement
 from audit import get_audit_trail, get_full_audit
 from streaming import router as streaming_router
+from config import validate_config, is_dynatrace_configured, load_entity_mapping
 import asyncio
+import logging
 
-app = FastAPI(title="Servidor Agent Core", version="2.0.0")
+logger = logging.getLogger("servidor.main")
+logging.basicConfig(level=logging.INFO)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup: validate Dynatrace configuration."""
+    validate_config()
+    if is_dynatrace_configured():
+        try:
+            from dynatrace.client import get_client
+            client = get_client()
+            health = await client.health_check()
+            if health["connected"]:
+                logger.info("✅ Dynatrace connectivity verified at startup")
+            else:
+                logger.warning(f"⚠️  Dynatrace connectivity check failed: {health['errors']}")
+        except Exception as e:
+            logger.warning(f"⚠️  Could not verify Dynatrace at startup: {e}")
+    else:
+        logger.warning("⚠️  Dynatrace not configured — running in MOCK MODE")
+    yield
+    # Shutdown: close the Dynatrace client
+    if is_dynatrace_configured():
+        try:
+            from dynatrace.client import get_client
+            client = get_client()
+            await client.close()
+        except Exception:
+            pass
+
+
+app = FastAPI(title="Servidor Agent Core", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -135,7 +169,7 @@ async def approve_step(incident_id: str, step_order: int, background_tasks: Back
     add_audit(incident_id, AuditEventType.APPROVAL, f"Approved by admin: {step.description}", actor="admin@hospital.demo")
 
     q = get_stream_queue()
-    await q.put(f"✅ Step {step.order} approved by admin: {step.description}")
+    await q.put(f" Step {step.order} approved by admin: {step.description}")
 
     async def _execute_and_check():
         await execute_step(incident_id, step)
@@ -162,7 +196,7 @@ async def reject_step(incident_id: str, step_order: int):
     add_audit(incident_id, AuditEventType.REJECTION, f"Rejected by admin: {step.description}", actor="admin@hospital.demo")
 
     q = get_stream_queue()
-    await q.put(f"❌ Step {step.order} rejected by admin: {step.description}")
+    await q.put(f" Step {step.order} rejected by admin: {step.description}")
 
     await check_and_resolve(incident_id)
 
@@ -199,3 +233,65 @@ def get_incident_audit(incident_id: str):
     if not trail:
         raise HTTPException(404, "No audit trail found for this incident")
     return trail
+
+
+
+@app.get("/api/v1/dynatrace/health")
+async def dynatrace_health():
+    """
+    Verify Dynatrace connectivity, token scopes, and entity mapping.
+    Use this to confirm your setup is working.
+    """
+    if not is_dynatrace_configured():
+        return {
+            "status": "not_configured",
+            "message": "DYNATRACE_URL and/or DYNATRACE_TOKEN not set in .env",
+            "dynatrace_url": None,
+            "connected": False,
+            "entities_registered": 0,
+        }
+
+    from dynatrace.client import get_client
+    client = get_client()
+    health = await client.health_check()
+    mapping = load_entity_mapping()
+
+    return {
+        "status": "connected" if health["connected"] else "connection_failed",
+        "dynatrace_url": health["url"],
+        "connected": health["connected"],
+        "scopes_valid": health.get("scopes_valid", {}),
+        "entities_registered": len(mapping),
+        "entity_mapping": mapping,
+        "errors": health.get("errors", []),
+    }
+
+
+@app.get("/api/v1/dynatrace/entities")
+async def dynatrace_entities():
+    
+    mapping = load_entity_mapping()
+    if not mapping:
+        raise HTTPException(
+            404,
+            "No entities registered. Run: python agent/dynatrace_setup.py"
+        )
+    return {
+        "count": len(mapping),
+        "entities": mapping,
+    }
+
+
+@app.get("/api/v1/dynatrace/problems")
+async def dynatrace_problems():
+    
+    if not is_dynatrace_configured():
+        raise HTTPException(503, "Dynatrace is not configured")
+
+    from dynatrace.client import get_client
+    client = get_client()
+    problems = await client.get_open_problems()
+    return {
+        "count": len(problems),
+        "problems": problems,
+    }
