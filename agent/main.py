@@ -16,7 +16,10 @@ from remediation import generate_remediation_plan, execute_step, check_and_resol
 from trust_matrix import validate_action, get_step_approval_requirement
 from audit import get_audit_trail, get_full_audit
 from streaming import router as streaming_router
-from config import validate_config, is_dynatrace_configured, load_entity_mapping
+from config import (
+    validate_config, is_dynatrace_configured, is_gemini_configured,
+    load_entity_mapping
+)
 import asyncio
 import logging
 
@@ -25,7 +28,6 @@ logging.basicConfig(level=logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: validate Dynatrace configuration."""
     validate_config()
     if is_dynatrace_configured():
         try:
@@ -33,15 +35,21 @@ async def lifespan(app: FastAPI):
             client = get_client()
             health = await client.health_check()
             if health["connected"]:
-                logger.info("✅ Dynatrace connectivity verified at startup")
+                logger.info("Dynatrace connectivity verified at startup")
             else:
-                logger.warning(f"⚠️  Dynatrace connectivity check failed: {health['errors']}")
+                logger.warning(f"Dynatrace connectivity check failed: {health['errors']}")
         except Exception as e:
-            logger.warning(f"⚠️  Could not verify Dynatrace at startup: {e}")
+            logger.warning(f"Could not verify Dynatrace at startup: {e}")
     else:
-        logger.warning("⚠️  Dynatrace not configured — running in MOCK MODE")
+        logger.warning("Dynatrace not configured -- running in MOCK MODE")
+
+    if is_gemini_configured():
+        logger.info("Gemini reasoning engine is ENABLED")
+    else:
+        logger.warning("Gemini not configured -- reasoning will use static fallbacks")
+
     yield
-    # Shutdown: close the Dynatrace client
+
     if is_dynatrace_configured():
         try:
             from dynatrace.client import get_client
@@ -70,8 +78,8 @@ def health_check():
 
 
 @app.get("/api/v1/status")
-def get_status():
-    anomalies = check_anomalies()
+async def get_status():
+    anomalies = await check_anomalies()
     active = get_active_incident()
     return {
         "services": {
@@ -92,7 +100,7 @@ async def _run_agent_pipeline(incident: Incident, anomaly: dict):
 
     incident.status = IncidentStatus.ANALYZING
     add_audit(incident.incident_id, AuditEventType.DETECTION, f"Anomaly detected: {anomaly['problem']} on {anomaly['service']}", confidence=0.98)
-    await q.put(f"🚨 INCIDENT {incident.incident_id} — Anomaly detected on {anomaly['service']}")
+    await q.put(f"INCIDENT {incident.incident_id} -- Anomaly detected on {anomaly['service']}")
     await asyncio.sleep(0.5)
 
     br = await calculate_blast_radius(incident.incident_id, anomaly)
@@ -107,7 +115,7 @@ async def _run_agent_pipeline(incident: Incident, anomaly: dict):
         req = get_step_approval_requirement(step.risk_level)
         if req["auto_execute"]:
             if req["delay_seconds"] > 0:
-                await q.put(f"⏱️  Auto-executing step {step.order} in {req['delay_seconds']}s (LOW risk)...")
+                await q.put(f"Auto-executing step {step.order} in {req['delay_seconds']}s (LOW risk)...")
                 await asyncio.sleep(req["delay_seconds"])
             step.status = StepStatus.APPROVED
             add_audit(incident.incident_id, AuditEventType.APPROVAL, f"Auto-approved: {step.description}", actor="trust-matrix")
@@ -123,10 +131,47 @@ async def trigger_failure(background_tasks: BackgroundTasks, request: SimulateRe
     if get_active_incident():
         raise HTTPException(400, "An incident is already active. Resolve it first.")
 
+    if is_dynatrace_configured():
+        from dynatrace.client import get_client, get_entity_id
+        client = get_client()
+
+        entity_key = f"{request.service}-svc"
+        entity_id = get_entity_id(entity_key)
+
+        if entity_id:
+            await client.trigger_error_event(
+                entity_id=entity_id,
+                title=f"{request.failure_type} on {request.service}",
+                description=f"Simulated {request.severity} {request.failure_type} on {request.service}",
+                timeout_minutes=15,
+                properties={
+                    "servidor.simulated": "true",
+                    "servidor.failure_type": request.failure_type,
+                    "servidor.severity": request.severity,
+                },
+            )
+            logger.info(f"Triggered real Dynatrace error event on {entity_id}")
+            await asyncio.sleep(3)
+        else:
+            logger.warning(f"No entity ID found for {entity_key}, creating synthetic anomaly")
+
     set_failure_active(True)
-    anomalies = check_anomalies()
+
+    anomalies = await check_anomalies()
+
     if not anomalies:
-        raise HTTPException(500, "Failed to generate anomaly")
+        anomalies = [{
+            "problem_id": f"SIMULATED-{request.service}",
+            "problem": f"{request.failure_type} on {request.service}",
+            "service": f"{request.service}-svc",
+            "severity": request.severity.upper(),
+            "status": "OPEN",
+            "start_time": 0,
+            "affected_entities": [f"{request.service}-svc"],
+            "evidence": [{"type": "SIMULATED", "display_name": request.failure_type, "entity": request.service}],
+            "management_zones": [],
+            "raw": {},
+        }]
 
     incident = Incident(anomaly=anomalies[0])
     store_incident(incident)
@@ -136,7 +181,8 @@ async def trigger_failure(background_tasks: BackgroundTasks, request: SimulateRe
     return {
         "status": "failure_simulated",
         "incident_id": incident.incident_id,
-        "message": f"Memory pressure on {request.service} simulated. Agent pipeline started.",
+        "message": f"{request.failure_type} on {request.service} simulated. Agent pipeline started.",
+        "dynatrace_event_sent": is_dynatrace_configured(),
     }
 
 
@@ -169,7 +215,7 @@ async def approve_step(incident_id: str, step_order: int, background_tasks: Back
     add_audit(incident_id, AuditEventType.APPROVAL, f"Approved by admin: {step.description}", actor="admin@hospital.demo")
 
     q = get_stream_queue()
-    await q.put(f" Step {step.order} approved by admin: {step.description}")
+    await q.put(f"Step {step.order} approved by admin: {step.description}")
 
     async def _execute_and_check():
         await execute_step(incident_id, step)
@@ -196,7 +242,7 @@ async def reject_step(incident_id: str, step_order: int):
     add_audit(incident_id, AuditEventType.REJECTION, f"Rejected by admin: {step.description}", actor="admin@hospital.demo")
 
     q = get_stream_queue()
-    await q.put(f" Step {step.order} rejected by admin: {step.description}")
+    await q.put(f"Step {step.order} rejected by admin: {step.description}")
 
     await check_and_resolve(incident_id)
 
@@ -235,13 +281,8 @@ def get_incident_audit(incident_id: str):
     return trail
 
 
-
 @app.get("/api/v1/dynatrace/health")
 async def dynatrace_health():
-    """
-    Verify Dynatrace connectivity, token scopes, and entity mapping.
-    Use this to confirm your setup is working.
-    """
     if not is_dynatrace_configured():
         return {
             "status": "not_configured",
@@ -249,6 +290,7 @@ async def dynatrace_health():
             "dynatrace_url": None,
             "connected": False,
             "entities_registered": 0,
+            "gemini_configured": is_gemini_configured(),
         }
 
     from dynatrace.client import get_client
@@ -263,18 +305,18 @@ async def dynatrace_health():
         "scopes_valid": health.get("scopes_valid", {}),
         "entities_registered": len(mapping),
         "entity_mapping": mapping,
+        "gemini_configured": is_gemini_configured(),
         "errors": health.get("errors", []),
     }
 
 
 @app.get("/api/v1/dynatrace/entities")
 async def dynatrace_entities():
-    
     mapping = load_entity_mapping()
     if not mapping:
         raise HTTPException(
             404,
-            "No entities registered. Run: python agent/dynatrace_setup.py"
+            "No entities registered. Run: python agent/dynatrace/setup.py"
         )
     return {
         "count": len(mapping),
@@ -284,7 +326,6 @@ async def dynatrace_entities():
 
 @app.get("/api/v1/dynatrace/problems")
 async def dynatrace_problems():
-    
     if not is_dynatrace_configured():
         raise HTTPException(503, "Dynatrace is not configured")
 

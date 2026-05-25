@@ -73,7 +73,7 @@ def _load_env():
     
     env_path = Path(__file__).parent.parent / ".env"
     if env_path.exists():
-        print(f"📄 Loading environment from {env_path}")
+        print(f"Loading environment from {env_path}")
         with open(env_path) as f:
             for line in f:
                 line = line.strip()
@@ -94,7 +94,7 @@ async def run_setup():
 
     if not url or not token:
         print("ERROR: DYNATRACE_URL and DYNATRACE_TOKEN must be set.")
-        print("   Add them to .env or export them in your shell.")
+        print("Add them to .env or export them in your shell.")
         sys.exit(1)
 
     print(f" Dynatrace URL:   {url}")
