@@ -1,21 +1,33 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from pathlib import Path
 from models import (
     SimulateRequest, ActionRequest, Incident, IncidentStatus,
     StepStatus, AuditEventType, RiskLevel
 )
 from state import (
-    store_incident, get_active_incident, get_incident, get_all_incidents,
+    store_incident_sync, get_active_incident, get_incident, get_all_incidents,
     set_failure_active, is_failure_active, add_audit, get_stream_queue,
-    clear_active_incident
+    clear_active_incident, flush_incident, load_incidents_from_db
 )
-from detection import check_anomalies
-from blast_radius import calculate_blast_radius
-from remediation import generate_remediation_plan, execute_step, check_and_resolve
-from trust_matrix import validate_action, get_step_approval_requirement
-from audit import get_audit_trail, get_full_audit
+from modules.detection import check_anomalies
+from modules.blast_radius import calculate_blast_radius
+from modules.remediation import generate_remediation_plan, execute_step, check_and_resolve
+from modules.trust_matrix import validate_action, get_step_approval_requirement
+from modules.audit import get_audit_trail, get_full_audit
 from streaming import router as streaming_router
+from modules.notifications import dispatch_notifications
+from modules.briefings import generate_briefings
+from modules.compliance import generate_compliance_report
+from database import (
+    init_db, close_db, get_facility,
+    get_briefings as db_get_briefings,
+    get_notifications as db_get_notifications,
+    get_compliance_report as db_get_compliance,
+    list_compliance_reports as db_list_compliance,
+    get_service_patient_map, get_dependency_graph,
+)
 from config import (
     validate_config, is_dynatrace_configured, is_gemini_configured,
     load_entity_mapping
@@ -29,6 +41,11 @@ logging.basicConfig(level=logging.INFO)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     validate_config()
+
+    # Initialize database and load cache
+    await init_db()
+    await load_incidents_from_db()
+
     if is_dynatrace_configured():
         try:
             from dynatrace.client import get_client
@@ -44,11 +61,15 @@ async def lifespan(app: FastAPI):
         logger.warning("Dynatrace not configured -- running in MOCK MODE")
 
     if is_gemini_configured():
-        logger.info("Gemini reasoning engine is ENABLED")
+        from gemini.key_manager import key_manager
+        logger.info(f"Gemini reasoning engine is ENABLED ({key_manager.key_count} keys)")
     else:
         logger.warning("Gemini not configured -- reasoning will use static fallbacks")
 
     yield
+
+    # Shutdown
+    await close_db()
 
     if is_dynatrace_configured():
         try:
@@ -59,7 +80,7 @@ async def lifespan(app: FastAPI):
             pass
 
 
-app = FastAPI(title="Servidor Agent Core", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Servidor Agent Core", version="3.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -74,7 +95,7 @@ app.include_router(streaming_router)
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "service": "servidor-agent-core", "version": "2.0.0"}
+    return {"status": "healthy", "service": "servidor-agent-core", "version": "3.0.0"}
 
 
 @app.get("/api/v1/status")
@@ -95,6 +116,10 @@ async def get_status():
     }
 
 
+# ============================================================
+# Agent Pipeline (the core demo flow)
+# ============================================================
+
 async def _run_agent_pipeline(incident: Incident, anomaly: dict):
     q = get_stream_queue()
 
@@ -103,14 +128,45 @@ async def _run_agent_pipeline(incident: Incident, anomaly: dict):
     await q.put(f"INCIDENT {incident.incident_id} -- Anomaly detected on {anomaly['service']}")
     await asyncio.sleep(0.5)
 
+    # Step 1: Blast Radius
     br = await calculate_blast_radius(incident.incident_id, anomaly)
     incident.blast_radius = br
 
+    # Step 2: Clinical Notifications (Feature 6)
+    try:
+        notifications = await dispatch_notifications(
+            incident_id=incident.incident_id,
+            service_id=anomaly.get("service", ""),
+            anomaly=anomaly,
+            blast_radius_data=br.model_dump(mode="json"),
+        )
+        incident.notifications = notifications
+    except Exception as e:
+        logger.error(f"Notification dispatch failed: {e}")
+        await q.put(f"Warning: Clinical notifications failed: {e}")
+
+    # Step 3: Remediation Plan
     plan = await generate_remediation_plan(incident.incident_id, anomaly)
     incident.remediation_plan = plan
     incident.status = IncidentStatus.PLAN_READY
-    store_incident(incident)
 
+    # Step 4: Multi-Audience Briefings (Feature 4)
+    try:
+        briefings = await generate_briefings(
+            incident_id=incident.incident_id,
+            anomaly=anomaly,
+            blast_radius_data=br.model_dump(mode="json"),
+            remediation_plan=[s.model_dump(mode="json") for s in plan],
+        )
+        incident.briefings = briefings
+    except Exception as e:
+        logger.error(f"Briefing generation failed: {e}")
+        await q.put(f"Warning: Briefing generation failed: {e}")
+
+    # Flush to DB after all data is collected
+    await flush_incident(incident.incident_id)
+
+    # Step 5: Auto-execute LOW risk steps
     for step in plan:
         req = get_step_approval_requirement(step.risk_level)
         if req["auto_execute"]:
@@ -123,8 +179,31 @@ async def _run_agent_pipeline(incident: Incident, anomaly: dict):
 
     remaining = [s for s in plan if s.status == StepStatus.PENDING]
     if not remaining:
-        await check_and_resolve(incident.incident_id)
+        await _resolve_incident(incident.incident_id)
 
+
+async def _resolve_incident(incident_id: str):
+    """Handle incident resolution + compliance report generation."""
+    await check_and_resolve(incident_id)
+
+    # Step 6: Compliance Report (Feature 7) — after resolution
+    try:
+        report = await generate_compliance_report(incident_id)
+        inc = get_incident(incident_id)
+        if inc:
+            inc.compliance_report = report
+    except Exception as e:
+        logger.error(f"Compliance report generation failed: {e}")
+        q = get_stream_queue()
+        await q.put(f"Warning: Compliance report failed: {e}")
+
+    # Final flush
+    await flush_incident(incident_id)
+
+
+# ============================================================
+# Simulation Endpoint
+# ============================================================
 
 @app.post("/api/v1/simulate/failure")
 async def trigger_failure(background_tasks: BackgroundTasks, request: SimulateRequest = SimulateRequest()):
@@ -174,7 +253,7 @@ async def trigger_failure(background_tasks: BackgroundTasks, request: SimulateRe
         }]
 
     incident = Incident(anomaly=anomalies[0])
-    store_incident(incident)
+    store_incident_sync(incident)
 
     background_tasks.add_task(_run_agent_pipeline, incident, anomalies[0])
 
@@ -186,9 +265,13 @@ async def trigger_failure(background_tasks: BackgroundTasks, request: SimulateRe
     }
 
 
+# ============================================================
+# Incident Endpoints
+# ============================================================
+
 @app.get("/api/v1/incidents")
 def list_incidents():
-    return [inc.model_dump() for inc in get_all_incidents()]
+    return [inc.model_dump(mode="json") for inc in get_all_incidents()]
 
 
 @app.get("/api/v1/incidents/{incident_id}")
@@ -196,7 +279,7 @@ def get_incident_detail(incident_id: str):
     inc = get_incident(incident_id)
     if not inc:
         raise HTTPException(404, "Incident not found")
-    return inc.model_dump()
+    return inc.model_dump(mode="json")
 
 
 @app.post("/api/v1/incidents/{incident_id}/approve/{step_order}")
@@ -219,7 +302,9 @@ async def approve_step(incident_id: str, step_order: int, background_tasks: Back
 
     async def _execute_and_check():
         await execute_step(incident_id, step)
-        await check_and_resolve(incident_id)
+        remaining = [s for s in inc.remediation_plan if s.status == StepStatus.PENDING]
+        if not remaining:
+            await _resolve_incident(incident_id)
 
     background_tasks.add_task(_execute_and_check)
 
@@ -244,10 +329,16 @@ async def reject_step(incident_id: str, step_order: int):
     q = get_stream_queue()
     await q.put(f"Step {step.order} rejected by admin: {step.description}")
 
-    await check_and_resolve(incident_id)
+    remaining = [s for s in inc.remediation_plan if s.status == StepStatus.PENDING]
+    if not remaining:
+        await _resolve_incident(incident_id)
 
     return {"status": "rejected", "step": step.order, "action": step.description}
 
+
+# ============================================================
+# Safety Gate
+# ============================================================
 
 @app.post("/api/v1/actions/validate")
 async def validate_custom_action(request: ActionRequest):
@@ -261,12 +352,103 @@ async def validate_custom_action(request: ActionRequest):
     return {"allowed": True, "action": request.action, "message": "Action permitted."}
 
 
+# ============================================================
+# Reset
+# ============================================================
+
 @app.post("/api/v1/incidents/{incident_id}/reset")
 async def reset_incident(incident_id: str):
     set_failure_active(False)
     clear_active_incident()
     return {"status": "reset", "message": "Incident cleared. System ready for next simulation."}
 
+
+# ============================================================
+# Feature 4: Briefings
+# ============================================================
+
+@app.get("/api/v1/incidents/{incident_id}/briefings")
+async def get_briefings(incident_id: str):
+    # Try in-memory first (fastest)
+    inc = get_incident(incident_id)
+    if inc and inc.briefings:
+        return inc.briefings
+
+    # Try database
+    briefings = await db_get_briefings(incident_id)
+    if briefings:
+        return briefings
+
+    raise HTTPException(404, "Briefings not yet generated for this incident")
+
+
+# ============================================================
+# Feature 6: Notifications
+# ============================================================
+
+@app.get("/api/v1/incidents/{incident_id}/notifications")
+async def get_notifications(incident_id: str):
+    # Try in-memory first
+    inc = get_incident(incident_id)
+    if inc and inc.notifications:
+        return {"incident_id": incident_id, "notifications": inc.notifications, "count": len(inc.notifications)}
+
+    # Try database
+    notifications = await db_get_notifications(incident_id)
+    return {"incident_id": incident_id, "notifications": notifications, "count": len(notifications)}
+
+
+# ============================================================
+# Feature 7: Compliance Reports
+# ============================================================
+
+@app.get("/api/v1/incidents/{incident_id}/compliance")
+async def get_compliance(incident_id: str):
+    # Try in-memory first
+    inc = get_incident(incident_id)
+    if inc and inc.compliance_report:
+        return inc.compliance_report
+
+    # Try database/file
+    report = await db_get_compliance(incident_id)
+    if report:
+        return report
+
+    raise HTTPException(404, "Compliance report not yet generated for this incident")
+
+
+@app.get("/api/v1/compliance-reports")
+async def list_compliance():
+    """List all compliance reports (persistent across restarts)."""
+    reports = await db_list_compliance()
+    return {"reports": reports, "count": len(reports)}
+
+
+# ============================================================
+# Facility Data
+# ============================================================
+
+@app.get("/api/v1/facility")
+def facility_data():
+    """Hospital facility information (from cache)."""
+    return get_facility()
+
+
+@app.get("/api/v1/services")
+def service_data():
+    """Service-patient mapping (from cache)."""
+    return get_service_patient_map()
+
+
+@app.get("/api/v1/dependency-graph")
+def dependency_graph_data():
+    """Service dependency graph (from cache)."""
+    return get_dependency_graph()
+
+
+# ============================================================
+# Audit
+# ============================================================
 
 @app.get("/api/v1/audit")
 def get_audit():
@@ -280,6 +462,10 @@ def get_incident_audit(incident_id: str):
         raise HTTPException(404, "No audit trail found for this incident")
     return trail
 
+
+# ============================================================
+# Dynatrace
+# ============================================================
 
 @app.get("/api/v1/dynatrace/health")
 async def dynatrace_health():
