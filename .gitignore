@@ -33,3 +33,7 @@ node_modules/
 
 # Dynatrace
 dynatrace/logs/
+
+data/runtime/
+incident.json
+

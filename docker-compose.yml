@@ -8,6 +8,13 @@ services:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - MONGODB_URI=${MONGODB_URI}
+      - MONGODB_DB=${MONGODB_DB}
+      - DYNATRACE_URL=${DYNATRACE_URL}
+      - DYNATRACE_TOKEN=${DYNATRACE_TOKEN}
+      - GEMINI_MODEL=${GEMINI_MODEL}
+      - GCP_PROJECT=${GCP_PROJECT}
     volumes:
       - ./agent:/app
 

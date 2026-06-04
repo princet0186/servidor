@@ -1,6 +1,6 @@
 from models import RefusalResponse, RiskLevel, AuditEventType, ActionRequest
 from state import add_audit, get_stream_queue, get_active_incident
-from blast_radius import SERVICE_PATIENT_MAP
+from database import get_service_patient_map
 import asyncio
 
 BLOCKED_ACTIONS = {

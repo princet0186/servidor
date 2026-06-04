@@ -42,6 +42,9 @@ class AuditEventType(str, Enum):
     VERIFICATION = "verification"
     REFUSAL = "refusal"
     RESOLUTION = "resolution"
+    NOTIFICATION = "notification"
+    BRIEFING = "briefing"
+    COMPLIANCE = "compliance"
 
 
 class BlastRadius(BaseModel):
@@ -51,6 +54,9 @@ class BlastRadius(BaseModel):
     affected_workflows: list[str] = []
     estimated_harm_minutes: int = 0
     severity: RiskLevel = RiskLevel.NONE
+    icu_locations: list[dict] = []      # [{ward, floor, bed, acuity, protocol, news2_score}]
+    affected_wards: list[dict] = []     # [{ward_id, ward_name, floor, beds: [...]}]
+    general_wards: list[dict] = []      # [{ward, ward_name, floor, beds_affected}]
 
 
 class RemediationStep(BaseModel):
@@ -80,9 +86,46 @@ class Incident(BaseModel):
     blast_radius: Optional[BlastRadius] = None
     remediation_plan: list[RemediationStep] = []
     audit_trail: list[AuditEntry] = []
+    briefings: Optional[dict] = None
+    notifications: list[dict] = []
+    compliance_report: Optional[dict] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     resolved_at: Optional[datetime] = None
     duration_seconds: Optional[float] = None
+
+
+class IncidentBriefing(BaseModel):
+    """Feature 4: Multi-audience incident briefing."""
+    incident_id: str
+    engineer: str = ""
+    physician: str = ""
+    administrator: str = ""
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ClinicalNotification(BaseModel):
+    """Feature 6: Clinical staff notification."""
+    recipient_name: str
+    recipient_role: str
+    ward: str
+    channel: str  # "sms" | "email"
+    message: str
+    sent_at: datetime = Field(default_factory=datetime.utcnow)
+    status: str = "sent"  # "sent" | "failed" | "pending"
+
+
+class ComplianceReport(BaseModel):
+    """Feature 7: Regulatory compliance report."""
+    incident_id: str
+    duration_seconds: float = 0
+    patients_at_risk: int = 0
+    patients_recovered: int = 0
+    actions_taken: int = 0
+    human_approvals: int = 0
+    unsafe_actions_blocked: int = 0
+    narrative: str = ""
+    frameworks: list[str] = ["HIPAA", "Joint Commission", "State DOH"]
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class RefusalResponse(BaseModel):

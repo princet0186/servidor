@@ -1,0 +1,116 @@
+{
+  "hospital_name": "Metro General Hospital",
+  "hospital_id": "MGH-001",
+  "city": "Mumbai",
+  "total_beds": 450,
+  "total_icu_beds": 38,
+  "wards": [
+    {
+      "ward_id": "ICU-C",
+      "name": "ICU Ward C",
+      "floor": 2,
+      "type": "critical_care",
+      "specialty": "cardiac_surgical",
+      "beds": [
+        {"bed_id": "4C", "type": "monitored", "equipment": ["ventilator", "cardiac_monitor", "infusion_pump"]},
+        {"bed_id": "5C", "type": "monitored", "equipment": ["cardiac_monitor", "infusion_pump"]},
+        {"bed_id": "6A", "type": "monitored", "equipment": ["ventilator", "cardiac_monitor", "pulse_oximeter"]},
+        {"bed_id": "6B", "type": "monitored", "equipment": ["cardiac_monitor", "infusion_pump"]},
+        {"bed_id": "7A", "type": "isolation", "equipment": ["ventilator", "cardiac_monitor", "HEPA_filter"]},
+        {"bed_id": "8C", "type": "monitored", "equipment": ["cardiac_monitor", "infusion_pump"]},
+        {"bed_id": "9A", "type": "monitored", "equipment": ["ventilator", "cardiac_monitor"]},
+        {"bed_id": "9B", "type": "monitored", "equipment": ["cardiac_monitor", "defibrillator", "infusion_pump"]}
+      ]
+    },
+    {
+      "ward_id": "ICU-A",
+      "name": "ICU Ward A",
+      "floor": 3,
+      "type": "critical_care",
+      "specialty": "medical",
+      "beds": [
+        {"bed_id": "2A", "type": "monitored", "equipment": ["ventilator", "cardiac_monitor"]},
+        {"bed_id": "3B", "type": "monitored", "equipment": ["cardiac_monitor", "infusion_pump"]},
+        {"bed_id": "4A", "type": "monitored", "equipment": ["ventilator", "cardiac_monitor", "CRRT"]},
+        {"bed_id": "5B", "type": "monitored", "equipment": ["cardiac_monitor", "infusion_pump"]},
+        {"bed_id": "6C", "type": "isolation", "equipment": ["ventilator", "cardiac_monitor", "HEPA_filter"]},
+        {"bed_id": "7B", "type": "monitored", "equipment": ["cardiac_monitor", "pulse_oximeter"]}
+      ]
+    },
+    {
+      "ward_id": "ICU-N",
+      "name": "Neonatal ICU",
+      "floor": 4,
+      "type": "critical_care",
+      "specialty": "neonatal",
+      "beds": [
+        {"bed_id": "N1", "type": "incubator", "equipment": ["neonatal_monitor", "phototherapy"]},
+        {"bed_id": "N2", "type": "incubator", "equipment": ["neonatal_monitor", "CPAP"]},
+        {"bed_id": "N3", "type": "open_warmer", "equipment": ["neonatal_monitor"]},
+        {"bed_id": "N4", "type": "incubator", "equipment": ["neonatal_monitor", "ventilator"]}
+      ]
+    },
+    {
+      "ward_id": "GEN-5",
+      "name": "General Ward 5",
+      "floor": 1,
+      "type": "general",
+      "specialty": "medical_surgical",
+      "bed_count": 24
+    },
+    {
+      "ward_id": "GEN-3",
+      "name": "General Ward 3",
+      "floor": 1,
+      "type": "general",
+      "specialty": "orthopedic",
+      "bed_count": 20
+    },
+    {
+      "ward_id": "GEN-7",
+      "name": "General Ward 7",
+      "floor": 2,
+      "type": "general",
+      "specialty": "oncology",
+      "bed_count": 18
+    },
+    {
+      "ward_id": "SURG-2",
+      "name": "Surgical Ward 2",
+      "floor": 3,
+      "type": "step_down",
+      "specialty": "post_surgical",
+      "bed_count": 16
+    },
+    {
+      "ward_id": "MAT-1",
+      "name": "Maternity Ward",
+      "floor": 4,
+      "type": "maternity",
+      "specialty": "obstetrics",
+      "bed_count": 22
+    },
+    {
+      "ward_id": "PED-1",
+      "name": "Pediatric Ward",
+      "floor": 4,
+      "type": "pediatric",
+      "specialty": "general_pediatrics",
+      "bed_count": 18
+    },
+    {
+      "ward_id": "EMR-1",
+      "name": "Emergency Department",
+      "floor": 0,
+      "type": "emergency",
+      "specialty": "emergency_medicine",
+      "bed_count": 30
+    }
+  ],
+  "departments": [
+    {"id": "PATHOLOGY", "name": "Pathology Lab", "floor": 0, "critical_turnaround_minutes": 30},
+    {"id": "RADIOLOGY", "name": "Radiology", "floor": 1, "critical_turnaround_minutes": 45},
+    {"id": "PHARMACY", "name": "Central Pharmacy", "floor": 0, "critical_turnaround_minutes": 15},
+    {"id": "BLOOD_BANK", "name": "Blood Bank", "floor": 0, "critical_turnaround_minutes": 20}
+  ]
+}

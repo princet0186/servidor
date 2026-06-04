@@ -1,0 +1,99 @@
+{
+  "vitals-ingestion-svc": {
+    "display_name": "Vitals Monitoring",
+    "description": "Real-time patient vital signs ingestion and deterioration detection",
+    "total_patients": 247,
+    "icu_patients": 18,
+    "workflows": ["vitals monitoring", "deterioration alerts", "drug safety checks"],
+    "harm_minutes": 8,
+    "icu_locations": [
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "4C", "acuity": "critical", "protocol": "sepsis", "news2_score": 7},
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "5C", "acuity": "high", "protocol": "post-op cardiac", "news2_score": 5},
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "6A", "acuity": "critical", "protocol": "post-op monitoring", "news2_score": 8},
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "6B", "acuity": "high", "protocol": "cardiac arrhythmia", "news2_score": 6},
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "7A", "acuity": "critical", "protocol": "ventilator weaning", "news2_score": 9},
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "8C", "acuity": "high", "protocol": "renal monitoring", "news2_score": 5},
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "9A", "acuity": "high", "protocol": "respiratory failure", "news2_score": 6},
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "9B", "acuity": "critical", "protocol": "cardiac arrest recovery", "news2_score": 8},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "2A", "acuity": "high", "protocol": "respiratory monitoring", "news2_score": 6},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "3B", "acuity": "high", "protocol": "diabetic ketoacidosis", "news2_score": 5},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "4A", "acuity": "critical", "protocol": "CRRT dialysis", "news2_score": 7},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "5B", "acuity": "critical", "protocol": "neurological monitoring", "news2_score": 7},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "6C", "acuity": "high", "protocol": "hepatic failure", "news2_score": 6},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "7B", "acuity": "high", "protocol": "pneumonia", "news2_score": 5},
+      {"ward": "ICU-N", "ward_name": "Neonatal ICU", "floor": 4, "bed": "N1", "acuity": "critical", "protocol": "premature 28wk", "news2_score": null},
+      {"ward": "ICU-N", "ward_name": "Neonatal ICU", "floor": 4, "bed": "N2", "acuity": "critical", "protocol": "neonatal sepsis", "news2_score": null},
+      {"ward": "ICU-N", "ward_name": "Neonatal ICU", "floor": 4, "bed": "N3", "acuity": "high", "protocol": "jaundice phototherapy", "news2_score": null},
+      {"ward": "ICU-N", "ward_name": "Neonatal ICU", "floor": 4, "bed": "N4", "acuity": "critical", "protocol": "respiratory distress", "news2_score": null}
+    ],
+    "general_wards_affected": [
+      {"ward": "GEN-5", "ward_name": "General Ward 5", "floor": 1, "beds_affected": 24},
+      {"ward": "GEN-3", "ward_name": "General Ward 3", "floor": 1, "beds_affected": 20},
+      {"ward": "GEN-7", "ward_name": "General Ward 7", "floor": 2, "beds_affected": 18},
+      {"ward": "SURG-2", "ward_name": "Surgical Ward 2", "floor": 3, "beds_affected": 16},
+      {"ward": "EMR-1", "ward_name": "Emergency Department", "floor": 0, "beds_affected": 30}
+    ]
+  },
+  "medication-alerts-svc": {
+    "display_name": "Medication Safety",
+    "description": "Drug interaction checks, dosage validation, and prescription safety alerts",
+    "total_patients": 43,
+    "icu_patients": 18,
+    "workflows": ["drug interaction checks", "sepsis alerts", "dosage validation"],
+    "harm_minutes": 5,
+    "icu_locations": [
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "4C", "acuity": "critical", "protocol": "vancomycin infusion", "news2_score": 7},
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "6A", "acuity": "critical", "protocol": "heparin drip", "news2_score": 8},
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "7A", "acuity": "critical", "protocol": "sedation protocol", "news2_score": 9},
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "9B", "acuity": "critical", "protocol": "vasopressor titration", "news2_score": 8},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "2A", "acuity": "high", "protocol": "antibiotic rotation", "news2_score": 6},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "4A", "acuity": "critical", "protocol": "dialysis dosing", "news2_score": 7},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "5B", "acuity": "critical", "protocol": "anticonvulsant monitoring", "news2_score": 7}
+    ],
+    "general_wards_affected": [
+      {"ward": "GEN-5", "ward_name": "General Ward 5", "floor": 1, "beds_affected": 8},
+      {"ward": "GEN-7", "ward_name": "General Ward 7", "floor": 2, "beds_affected": 6},
+      {"ward": "SURG-2", "ward_name": "Surgical Ward 2", "floor": 3, "beds_affected": 4}
+    ]
+  },
+  "lab-routing-svc": {
+    "display_name": "Lab Results",
+    "description": "Laboratory result routing and critical value notification system",
+    "total_patients": 112,
+    "icu_patients": 7,
+    "workflows": ["lab result delivery", "critical value alerts"],
+    "harm_minutes": 15,
+    "icu_locations": [
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "4C", "acuity": "critical", "protocol": "blood culture pending", "news2_score": 7},
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "6A", "acuity": "critical", "protocol": "coagulation panel", "news2_score": 8},
+      {"ward": "ICU-C", "ward_name": "ICU Ward C", "floor": 2, "bed": "9B", "acuity": "critical", "protocol": "troponin monitoring", "news2_score": 8},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "4A", "acuity": "critical", "protocol": "renal function panel", "news2_score": 7},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "5B", "acuity": "critical", "protocol": "CSF analysis pending", "news2_score": 7},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "6C", "acuity": "high", "protocol": "liver function panel", "news2_score": 6},
+      {"ward": "ICU-A", "ward_name": "ICU Ward A", "floor": 3, "bed": "7B", "acuity": "high", "protocol": "sputum culture", "news2_score": 5}
+    ],
+    "general_wards_affected": [
+      {"ward": "GEN-5", "ward_name": "General Ward 5", "floor": 1, "beds_affected": 18},
+      {"ward": "GEN-3", "ward_name": "General Ward 3", "floor": 1, "beds_affected": 12},
+      {"ward": "GEN-7", "ward_name": "General Ward 7", "floor": 2, "beds_affected": 14},
+      {"ward": "EMR-1", "ward_name": "Emergency Department", "floor": 0, "beds_affected": 22}
+    ]
+  },
+  "patient-portal-svc": {
+    "display_name": "Patient Portal",
+    "description": "Patient self-service portal for records, appointments, and communication",
+    "total_patients": 420,
+    "icu_patients": 0,
+    "workflows": ["patient self-service", "appointment scheduling"],
+    "harm_minutes": 60,
+    "icu_locations": [],
+    "general_wards_affected": [
+      {"ward": "GEN-5", "ward_name": "General Ward 5", "floor": 1, "beds_affected": 24},
+      {"ward": "GEN-3", "ward_name": "General Ward 3", "floor": 1, "beds_affected": 20},
+      {"ward": "GEN-7", "ward_name": "General Ward 7", "floor": 2, "beds_affected": 18},
+      {"ward": "SURG-2", "ward_name": "Surgical Ward 2", "floor": 3, "beds_affected": 16},
+      {"ward": "MAT-1", "ward_name": "Maternity Ward", "floor": 4, "beds_affected": 22},
+      {"ward": "PED-1", "ward_name": "Pediatric Ward", "floor": 4, "beds_affected": 18}
+    ]
+  }
+}
