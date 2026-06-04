@@ -1,0 +1,26 @@
+{
+  "vitals-ingestion-svc": [
+    {"role": "Charge Nurse", "name": "Nurse Priya Sharma", "ward": "ICU Ward C", "ward_id": "ICU-C", "floor": 2, "phone": "+91-9876543210", "email": "priya.sharma@metrogeneral.in", "notification_channel": "sms", "shift": "day"},
+    {"role": "Charge Nurse", "name": "Nurse Rajesh Kumar", "ward": "ICU Ward A", "ward_id": "ICU-A", "floor": 3, "phone": "+91-9876543211", "email": "rajesh.kumar@metrogeneral.in", "notification_channel": "sms", "shift": "day"},
+    {"role": "Charge Nurse", "name": "Nurse Anita Desai", "ward": "Neonatal ICU", "ward_id": "ICU-N", "floor": 4, "phone": "+91-9876543212", "email": "anita.desai@metrogeneral.in", "notification_channel": "sms", "shift": "day"},
+    {"role": "Attending Physician", "name": "Dr. Vikram Singh", "ward": "ICU Ward C", "ward_id": "ICU-C", "floor": 2, "phone": "+91-9876543220", "email": "vikram.singh@metrogeneral.in", "notification_channel": "sms", "shift": "day"},
+    {"role": "Attending Physician", "name": "Dr. Sunita Rao", "ward": "ICU Ward A", "ward_id": "ICU-A", "floor": 3, "phone": "+91-9876543221", "email": "sunita.rao@metrogeneral.in", "notification_channel": "sms", "shift": "day"},
+    {"role": "Hospital Administrator", "name": "Dr. Meena Patel", "ward": "Administration", "ward_id": "ADMIN", "floor": 0, "phone": "+91-9876543200", "email": "meena.patel@metrogeneral.in", "notification_channel": "email", "shift": "all"}
+  ],
+  "medication-alerts-svc": [
+    {"role": "Charge Nurse", "name": "Nurse Priya Sharma", "ward": "ICU Ward C", "ward_id": "ICU-C", "floor": 2, "phone": "+91-9876543210", "email": "priya.sharma@metrogeneral.in", "notification_channel": "sms", "shift": "day"},
+    {"role": "Charge Nurse", "name": "Nurse Rajesh Kumar", "ward": "ICU Ward A", "ward_id": "ICU-A", "floor": 3, "phone": "+91-9876543211", "email": "rajesh.kumar@metrogeneral.in", "notification_channel": "sms", "shift": "day"},
+    {"role": "Clinical Pharmacist", "name": "Dr. Arun Mehta", "ward": "Central Pharmacy", "ward_id": "PHARMACY", "floor": 0, "phone": "+91-9876543230", "email": "arun.mehta@metrogeneral.in", "notification_channel": "sms", "shift": "day"},
+    {"role": "Hospital Administrator", "name": "Dr. Meena Patel", "ward": "Administration", "ward_id": "ADMIN", "floor": 0, "phone": "+91-9876543200", "email": "meena.patel@metrogeneral.in", "notification_channel": "email", "shift": "all"}
+  ],
+  "lab-routing-svc": [
+    {"role": "Charge Nurse", "name": "Nurse Priya Sharma", "ward": "ICU Ward C", "ward_id": "ICU-C", "floor": 2, "phone": "+91-9876543210", "email": "priya.sharma@metrogeneral.in", "notification_channel": "sms", "shift": "day"},
+    {"role": "Charge Nurse", "name": "Nurse Rajesh Kumar", "ward": "ICU Ward A", "ward_id": "ICU-A", "floor": 3, "phone": "+91-9876543211", "email": "rajesh.kumar@metrogeneral.in", "notification_channel": "sms", "shift": "day"},
+    {"role": "Lab Director", "name": "Dr. Kavita Nair", "ward": "Pathology Lab", "ward_id": "PATHOLOGY", "floor": 0, "phone": "+91-9876543240", "email": "kavita.nair@metrogeneral.in", "notification_channel": "sms", "shift": "day"},
+    {"role": "Hospital Administrator", "name": "Dr. Meena Patel", "ward": "Administration", "ward_id": "ADMIN", "floor": 0, "phone": "+91-9876543200", "email": "meena.patel@metrogeneral.in", "notification_channel": "email", "shift": "all"}
+  ],
+  "patient-portal-svc": [
+    {"role": "IT Operations Lead", "name": "Sanjay Gupta", "ward": "IT Department", "ward_id": "IT", "floor": 0, "phone": "+91-9876543250", "email": "sanjay.gupta@metrogeneral.in", "notification_channel": "email", "shift": "day"},
+    {"role": "Hospital Administrator", "name": "Dr. Meena Patel", "ward": "Administration", "ward_id": "ADMIN", "floor": 0, "phone": "+91-9876543200", "email": "meena.patel@metrogeneral.in", "notification_channel": "email", "shift": "all"}
+  ]
+}

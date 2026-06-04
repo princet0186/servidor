@@ -1,0 +1,14 @@
+{
+  "nodes": [
+    {"id": "vitals-ingestion-svc", "display_name": "Vitals Monitoring", "type": "critical", "min_replicas": 2, "current_replicas": 3, "health": "healthy"},
+    {"id": "medication-alerts-svc", "display_name": "Medication Safety", "type": "critical", "min_replicas": 2, "current_replicas": 2, "health": "healthy"},
+    {"id": "lab-routing-svc", "display_name": "Lab Results", "type": "standard", "min_replicas": 1, "current_replicas": 2, "health": "healthy"},
+    {"id": "patient-portal-svc", "display_name": "Patient Portal", "type": "standard", "min_replicas": 1, "current_replicas": 2, "health": "healthy"}
+  ],
+  "edges": [
+    {"source": "vitals-ingestion-svc", "target": "medication-alerts-svc", "type": "data_feed", "label": "vitals stream"},
+    {"source": "vitals-ingestion-svc", "target": "patient-portal-svc", "type": "data_feed", "label": "patient vitals"},
+    {"source": "lab-routing-svc", "target": "patient-portal-svc", "type": "data_feed", "label": "lab results"},
+    {"source": "medication-alerts-svc", "target": "patient-portal-svc", "type": "notification", "label": "drug alerts"}
+  ]
+}
