@@ -5,7 +5,7 @@ from pathlib import Path
 
 logger = logging.getLogger("servidor.config")
 
- #Load .env and core settings 
+# Load .env and core settings
 _env_path = Path(__file__).parent.parent / ".env"
 if _env_path.exists():
     with open(_env_path) as _f:
@@ -20,6 +20,11 @@ GCP_PROJECT = os.getenv("GCP_PROJECT", "servidor-hackathon")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 
+# MongoDB
+MONGODB_URI = os.getenv("MONGODB_URI", "")
+MONGODB_DB = os.getenv("MONGODB_DB", "servidor")
+
+# Dynatrace
 DYNATRACE_URL = os.getenv("DYNATRACE_URL", "")
 DYNATRACE_TOKEN = os.getenv("DYNATRACE_TOKEN", "")
 DYNATRACE_POLL_INTERVAL = int(os.getenv("DYNATRACE_POLL_INTERVAL", "30"))
@@ -41,10 +46,13 @@ def is_dynatrace_configured() -> bool:
 
 
 def is_gemini_configured() -> bool:
-    return bool(GOOGLE_API_KEY)
+    from gemini.key_manager import key_manager
+    return key_manager.is_configured()
 
 
 def validate_config():
+    from gemini.key_manager import key_manager
+
     if not DYNATRACE_URL:
         logger.warning("DYNATRACE_URL is not set. Dynatrace integration is DISABLED.")
     if not DYNATRACE_TOKEN:
@@ -58,7 +66,12 @@ def validate_config():
                 logger.info(f"  {name} -> {eid}")
         else:
             logger.warning("No entities.json found. Run: python dynatrace/setup.py")
-    if not GOOGLE_API_KEY:
-        logger.warning("GOOGLE_API_KEY is not set. Gemini reasoning is DISABLED.")
+    if key_manager.is_configured():
+        logger.info(f"Gemini configured: model={GEMINI_MODEL}, keys={key_manager.key_count}")
     else:
-        logger.info(f"Gemini configured: model={GEMINI_MODEL}")
+        logger.warning("No Gemini API keys found. Reasoning will use static fallbacks.")
+
+    if MONGODB_URI:
+        logger.info(f"MongoDB URI configured: ...{MONGODB_URI[-20:]}")
+    else:
+        logger.warning("MONGODB_URI not set. Using JSON file fallback for persistence.")
