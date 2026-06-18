@@ -71,7 +71,7 @@ def _print_banner():
 
 def _load_env():
     
-    env_path = Path(__file__).parent.parent / ".env"
+    env_path = Path(__file__).parent.parent.parent / ".env"
     if env_path.exists():
         print(f"Loading environment from {env_path}")
         with open(env_path) as f:
