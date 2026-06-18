@@ -17,8 +17,11 @@ if _env_path.exists():
 
 AGENT_PORT = int(os.getenv("AGENT_PORT", "8000"))
 GCP_PROJECT = os.getenv("GCP_PROJECT", "servidor-hackathon")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+
+# CORS
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 # MongoDB
 MONGODB_URI = os.getenv("MONGODB_URI", "")
