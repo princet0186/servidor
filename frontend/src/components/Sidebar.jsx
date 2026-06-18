@@ -1,9 +1,24 @@
-import React from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, AlertTriangle, Shield, FileText, Settings, Activity } from 'lucide-react';
+import { LayoutDashboard, AlertTriangle, Shield, FileText, Settings, Activity, Megaphone, HelpCircle, LogOut } from 'lucide-react';
+import { getStatus } from '../api/servidor';
 
 export default function Sidebar() {
-  const isConnected = true; // In the future, this can be dynamic
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    async function checkConnection() {
+      try {
+        await getStatus();
+        setIsConnected(true);
+      } catch (e) {
+        setIsConnected(false);
+      }
+    }
+    checkConnection();
+    const interval = setInterval(checkConnection, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <aside className="sidebar">
@@ -14,7 +29,7 @@ export default function Sidebar() {
       
       <nav className="sidebar-nav">
         <NavLink 
-          to="/" 
+          to="/" end
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
         >
           <LayoutDashboard size={18} />
@@ -50,9 +65,27 @@ export default function Sidebar() {
         </NavLink>
       </nav>
 
-      <div className="sidebar-footer">
-        <div className={`status-dot ${isConnected ? 'safe' : 'critical'}`}></div>
-        <span>Status: {isConnected ? 'Online' : 'Offline'}</span>
+      <div className="sidebar-bottom">
+        <button className="emergency-btn" id="emergency-alert-btn">
+          <Megaphone size={18} />
+          Emergency Alert
+        </button>
+
+        <div className="sidebar-bottom-links">
+          <a href="#" className="nav-item" id="support-link">
+            <HelpCircle size={18} />
+            Support
+          </a>
+          <a href="#" className="nav-item" id="signout-link">
+            <LogOut size={18} />
+            Sign Out
+          </a>
+        </div>
+
+        <div className="sidebar-footer">
+          <div className={`status-dot ${isConnected ? 'safe' : 'critical'}`}></div>
+          <span>Status: {isConnected ? 'Online' : 'Offline'}</span>
+        </div>
       </div>
     </aside>
   );

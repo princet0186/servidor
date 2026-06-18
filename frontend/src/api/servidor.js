@@ -1,4 +1,8 @@
-export const API_BASE = '/api/v1';
+// In production (Vercel), VITE_API_URL points to the Railway backend. 
+// In local dev, it falls back to the Vite proxy path.
+export const API_BASE = import.meta.env.VITE_API_URL 
+  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api/v1`
+  : '/api/v1';
 
 // --- Static Data (Cached on client) ---
 let facilityCache = null;
@@ -44,6 +48,12 @@ export async function getIncident(incidentId) {
   return res.json();
 }
 
+export async function listIncidents() {
+  const res = await fetch(`${API_BASE}/incidents`);
+  if (!res.ok) throw new Error('Failed to list incidents');
+  return res.json();
+}
+
 // --- Actions ---
 
 export async function approveStep(incidentId, stepOrder) {
@@ -80,7 +90,7 @@ export async function validateAction(action, target_service) {
   return res.json();
 }
 
-// --- New Features (4, 6, 7) ---
+// --- Features (4, 6, 7) ---
 
 export async function getBriefings(incidentId) {
   const res = await fetch(`${API_BASE}/incidents/${incidentId}/briefings`);
@@ -100,7 +110,35 @@ export async function getComplianceReport(incidentId) {
   return res.json();
 }
 
-// Keep an EventSource instance for SSE streaming
+export async function listComplianceReports() {
+  const res = await fetch(`${API_BASE}/compliance-reports`);
+  if (!res.ok) throw new Error('Failed to list compliance reports');
+  return res.json();
+}
+
+// --- Safety Gate ---
+
+export async function getSafetyValidations() {
+  const res = await fetch(`${API_BASE}/safety-validations`);
+  if (!res.ok) throw new Error('Failed to fetch safety validations');
+  return res.json();
+}
+
+// --- Config & Stats ---
+
+export async function getConfigStatus() {
+  const res = await fetch(`${API_BASE}/config/status`);
+  if (!res.ok) throw new Error('Failed to fetch config status');
+  return res.json();
+}
+
+export async function getStats() {
+  const res = await fetch(`${API_BASE}/stats`);
+  if (!res.ok) throw new Error('Failed to fetch stats');
+  return res.json();
+}
+
+// --- SSE Streaming ---
 let reasoningSource = null;
 
 export function subscribeToReasoning(onMessage, onOpen, onError) {

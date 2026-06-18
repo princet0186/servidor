@@ -1,19 +1,14 @@
-# Servidor — Healthcare Infrastructure Guardian Agent
+# Servidor
 
-> **"Others see infra alerts. Servidor sees patient harm."**
+Hospitals run on software—vitals monitors, medication alerts, lab result routing. When cloud infrastructure breaks, existing monitoring tools see CPU spikes and error rates. They don't see the clinical impact. The gap between "infrastructure problem" and "patient safety risk" is where harm happens.
 
-Servidor is an autonomous healthcare infrastructure guardian agent that converts Dynatrace observability signals into clinical risk assessments and executes safe remediation — with human approval gates.
+**Servidor** is an AI agent that bridges this gap. It converts infrastructure observability signals into clinical risk assessments. It connects the dots so IT teams know exactly how many patients are affected by an outage, ensuring safe and supervised recovery.
 
 Built with **Google Cloud Agent Builder + Gemini** and **Dynatrace MCP** for the [Google Cloud Rapid Agent Hackathon](https://devpost.com/).
 
-## What It Does
+## Why Servidor?
 
-1. **Detects** infrastructure anomalies via Dynatrace MCP
-2. **Reasons** about clinical blast radius — how many patients are affected
-3. **Plans** multi-step remediation with risk scores and confidence levels
-4. **Blocks** dangerous actions that could harm patients
-5. **Executes** approved recovery with human oversight
-6. **Verifies** recovery through Dynatrace metrics
+The tools that detect infrastructure problems don't understand patient impact, and the automation tools that take action don't have guardrails for healthcare. Servidor evaluates the "clinical blast radius" of an outage and gates dangerous actions before they are executed.
 
 ## Quick Start
 
@@ -30,29 +25,34 @@ docker-compose up -d
 
 ## Architecture
 
-```
-┌─────────────────────┐     ┌─────────────────┐     ┌──────────────────┐
-│ Simulated Hospital  │────▶│   Dynatrace     │────▶│  Servidor Agent  │
-│ Microservices (4)   │     │   MCP Server    │     │  (Agent Builder  │
-└─────────────────────┘     └─────────────────┘     │   + Gemini)      │
-                                                     └────────┬─────────┘
-                                                              │
-                                                     ┌────────▼─────────┐
-                                                     │  Command Center  │
-                                                     │  UI (Dark Mode)  │
-                                                     └──────────────────┘
-```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SERVIDOR AGENT                           │
+│                                                                 │
+│  ┌──────────────┐    ┌──────────────────┐    ┌───────────────┐  │
+│  │  DYNATRACE   │───▶│  GEMINI ENGINE   │───▶│  TRUST MATRIX │  │
+│  │  (Eyes)      │    │  (Brain)         │    │  (Guardrails) │  │
+│  │              │    │                  │    │               │  │
+│  │ • Detect     │    │ • Analyze        │    │ • Block       │  │
+│  │ • Monitor    │    │ • Plan           │    │ • Approve     │  │
+│  │ • Verify     │    │ • Reason         │    │ • Audit       │  │
+│  └──────────────┘    └──────────────────┘    └───────────────┘  │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │              GOOGLE CLOUD AGENT BUILDER                     ││
+│  │  Orchestration layer: manages tools, state, conversation    ││
+│  └─────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Agent | Google Cloud Agent Builder + Gemini |
-| Observability | Dynatrace MCP Server |
+| Agent | Gemini 3.1 Pro + MCP |
+| Observability | Dynatrace |
 | Backend | FastAPI (Python 3.12) |
-| Frontend | Vanilla HTML/CSS/JS |
+| Frontend | React + Vite + CSS |
 | Streaming | Server-Sent Events (SSE) |
-| Deploy | Google Cloud Run + Firebase Hosting |
+| Deploy | Railway (Backend) + Vercel (Frontend) |
 
 ## License
 
