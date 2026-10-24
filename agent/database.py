@@ -91,7 +91,7 @@ async def close_db():
 
 async def _seed_if_empty():
     """Seed MongoDB from data/ JSON files if collections are empty."""
-    if not _db:
+    if _db is None:
         return
 
     seed_map = {
@@ -131,7 +131,7 @@ async def _load_cache():
 
     for key, filename in files.items():
         # Try MongoDB first
-        if _mongo_available and _db:
+        if _mongo_available and _db is not None:
             try:
                 doc = await _db[key].find_one({"_id": "seed"})
                 if doc and "data" in doc:
@@ -198,7 +198,7 @@ async def store_incident(incident_dict: dict):
     """Store or update an incident."""
     incident_id = incident_dict.get("incident_id", "")
 
-    if _mongo_available and _db:
+    if _mongo_available and _db is not None:
         try:
             await _db.incidents.replace_one(
                 {"incident_id": incident_id},
@@ -215,7 +215,7 @@ async def store_incident(incident_dict: dict):
 
 async def get_incident(incident_id: str) -> Optional[dict]:
     """Retrieve a single incident."""
-    if _mongo_available and _db:
+    if _mongo_available and _db is not None:
         try:
             doc = await _db.incidents.find_one({"incident_id": incident_id}, {"_id": 0})
             return doc
@@ -227,7 +227,7 @@ async def get_incident(incident_id: str) -> Optional[dict]:
 
 async def get_all_incidents() -> list[dict]:
     """Retrieve all incidents."""
-    if _mongo_available and _db:
+    if _mongo_available and _db is not None:
         try:
             cursor = _db.incidents.find({}, {"_id": 0}).sort("created_at", -1)
             return await cursor.to_list(length=100)
@@ -239,7 +239,7 @@ async def get_all_incidents() -> list[dict]:
 
 async def get_active_incident() -> Optional[dict]:
     """Get the most recent non-resolved incident."""
-    if _mongo_available and _db:
+    if _mongo_available and _db is not None:
         try:
             doc = await _db.incidents.find_one(
                 {"status": {"$ne": "resolved"}},
@@ -266,7 +266,7 @@ async def store_briefings(incident_id: str, briefings: dict):
     """Store multi-audience briefings for an incident."""
     doc = {"incident_id": incident_id, **briefings}
 
-    if _mongo_available and _db:
+    if _mongo_available and _db is not None:
         try:
             await _db.briefings.replace_one(
                 {"incident_id": incident_id}, doc, upsert=True
@@ -280,7 +280,7 @@ async def store_briefings(incident_id: str, briefings: dict):
 
 async def get_briefings(incident_id: str) -> Optional[dict]:
     """Retrieve briefings for an incident."""
-    if _mongo_available and _db:
+    if _mongo_available and _db is not None:
         try:
             return await _db.briefings.find_one({"incident_id": incident_id}, {"_id": 0})
         except Exception as e:
@@ -297,7 +297,7 @@ async def store_notifications(incident_id: str, notifications: list[dict]):
     """Store clinical notifications for an incident."""
     doc = {"incident_id": incident_id, "notifications": notifications}
 
-    if _mongo_available and _db:
+    if _mongo_available and _db is not None:
         try:
             await _db.notifications.replace_one(
                 {"incident_id": incident_id}, doc, upsert=True
@@ -311,7 +311,7 @@ async def store_notifications(incident_id: str, notifications: list[dict]):
 
 async def get_notifications(incident_id: str) -> list[dict]:
     """Retrieve notifications for an incident."""
-    if _mongo_available and _db:
+    if _mongo_available and _db is not None:
         try:
             doc = await _db.notifications.find_one({"incident_id": incident_id}, {"_id": 0})
             return doc.get("notifications", []) if doc else []
@@ -333,7 +333,7 @@ async def store_compliance_report(report: dict):
     # Always write JSON file for guaranteed persistence
     _write_json_fallback("compliance_reports", incident_id, report)
 
-    if _mongo_available and _db:
+    if _mongo_available and _db is not None:
         try:
             await _db.compliance_reports.replace_one(
                 {"incident_id": incident_id}, report, upsert=True
@@ -344,7 +344,7 @@ async def store_compliance_report(report: dict):
 
 async def get_compliance_report(incident_id: str) -> Optional[dict]:
     """Retrieve a compliance report."""
-    if _mongo_available and _db:
+    if _mongo_available and _db is not None:
         try:
             doc = await _db.compliance_reports.find_one({"incident_id": incident_id}, {"_id": 0})
             if doc:
@@ -357,7 +357,7 @@ async def get_compliance_report(incident_id: str) -> Optional[dict]:
 
 async def list_compliance_reports() -> list[dict]:
     """List all compliance reports."""
-    if _mongo_available and _db:
+    if _mongo_available and _db is not None:
         try:
             cursor = _db.compliance_reports.find({}, {"_id": 0}).sort("generated_at", -1)
             return await cursor.to_list(length=100)

@@ -49,7 +49,7 @@ async def generate_compliance_report(incident_id: str) -> dict:
         incident_id=incident_id,
         duration_seconds=duration,
         patients_at_risk=patients_at_risk,
-        patients_recovered=patients_at_risk,  # all recovered on resolution
+        patients_recovered=0 if inc.status.value == "failed" else patients_at_risk,
         actions_taken=completed_steps,
         human_approvals=approvals,
         unsafe_actions_blocked=blocked,

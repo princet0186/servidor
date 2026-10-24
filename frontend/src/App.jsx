@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import Dashboard from './pages/Dashboard';
 import Incidents from './pages/Incidents';
+import IncidentDetail from './pages/IncidentDetail';
 import SafetyGate from './pages/SafetyGate';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
@@ -18,6 +19,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/incidents" element={<Incidents />} />
+              <Route path="/incidents/:incidentId" element={<IncidentDetail />} />
               <Route path="/safety" element={<SafetyGate />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />

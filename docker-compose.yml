@@ -2,8 +2,9 @@ version: '3.8'
 
 services:
   agent-backend:
-    build: 
-      context: ./agent
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
     ports:
       - "8000:8000"
     environment:
@@ -15,37 +16,53 @@ services:
       - DYNATRACE_TOKEN=${DYNATRACE_TOKEN}
       - GEMINI_MODEL=${GEMINI_MODEL}
       - GCP_PROJECT=${GCP_PROJECT}
+      - GEMINI_API_KEY_1=${GEMINI_API_KEY_1}
+      - GEMINI_API_KEY_2=${GEMINI_API_KEY_2}
+      - GEMINI_API_KEY_3=${GEMINI_API_KEY_3}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - NOTIFY_EMAIL_TO=${NOTIFY_EMAIL_TO}
+      - VITALS_INGESTION_URL=http://vitals-ingestion:8000
+      - MEDICATION_ALERTS_URL=http://medication-alerts:8000
+      - LAB_ROUTING_URL=http://lab-routing:8000
+      - PATIENT_PORTAL_URL=http://patient-portal:8000
     volumes:
-      - ./agent:/app
+      - ./agent:/app/agent
 
   vitals-ingestion:
     build:
-      context: ./services/vitals-ingestion
+      context: ./services/clinical-service
     ports:
       - "8001:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - SERVICE_NAME=vitals-ingestion
 
   medication-alerts:
     build:
-      context: ./services/medication-alerts
+      context: ./services/clinical-service
     ports:
       - "8002:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - SERVICE_NAME=medication-alerts
 
   lab-routing:
     build:
-      context: ./services/lab-routing
+      context: ./services/clinical-service
     ports:
       - "8003:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - SERVICE_NAME=lab-routing
 
   patient-portal:
     build:
-      context: ./services/patient-portal
+      context: ./services/clinical-service
     ports:
       - "8004:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - SERVICE_NAME=patient-portal

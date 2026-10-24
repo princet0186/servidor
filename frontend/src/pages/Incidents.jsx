@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Search, Filter, Clock, ChevronRight, Activity, ArrowUpDown, Loader } from 'lucide-react';
 import { listIncidents } from '../api/servidor';
 import './Incidents.css';
@@ -43,6 +43,7 @@ function formatTime(isoStr) {
 
 export default function Incidents() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -199,7 +200,7 @@ export default function Incidents() {
                   </td>
                   <td className="text-data-mono">{formatDuration(inc.duration)}</td>
                   <td>
-                    <button className="row-action" id={`view-${inc.id}`}>
+                    <button className="row-action" id={`view-${inc.id}`} onClick={() => navigate(`/incidents/${inc.id}`)}>
                       <ChevronRight size={16} />
                     </button>
                   </td>

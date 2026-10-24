@@ -13,8 +13,10 @@ from state import (
 )
 from modules.detection import check_anomalies
 from modules.blast_radius import calculate_blast_radius
-from modules.remediation import generate_remediation_plan, execute_step, check_and_resolve
-from modules.trust_matrix import validate_action, get_step_approval_requirement
+from modules.remediation import generate_remediation_plan, advance_plan
+from modules.trust_matrix import validate_action
+from modules import monitor
+from infra import fleet
 from modules.audit import get_audit_trail, get_full_audit
 from streaming import router as streaming_router
 from modules.notifications import dispatch_notifications
@@ -30,7 +32,8 @@ from database import (
 )
 from config import (
     validate_config, is_dynatrace_configured, is_gemini_configured,
-    load_entity_mapping, FRONTEND_URL
+    load_entity_mapping, FRONTEND_URL, CLOUD_RUN_ENABLED, MONITOR_INTERVAL,
+    is_email_configured, USE_VERTEXAI,
 )
 import asyncio
 import logging
@@ -61,14 +64,16 @@ async def lifespan(app: FastAPI):
         logger.warning("Dynatrace not configured -- running in MOCK MODE")
 
     if is_gemini_configured():
-        from gemini.key_manager import key_manager
-        logger.info(f"Gemini reasoning engine is ENABLED ({key_manager.key_count} keys)")
+        logger.info("Gemini reasoning engine is ENABLED" + (" (Vertex AI)" if USE_VERTEXAI else ""))
     else:
         logger.warning("Gemini not configured -- reasoning will use static fallbacks")
+
+    monitor_task = asyncio.create_task(monitor.run(_open_incident))
 
     yield
 
     # Shutdown
+    monitor_task.cancel()
     await close_db()
 
     if is_dynatrace_configured():
@@ -108,169 +113,156 @@ def health_check():
 
 @app.get("/api/v1/status")
 async def get_status():
-    anomalies = await check_anomalies()
+    health = monitor.latest() or await fleet.probe_all()
     active = get_active_incident()
+
     return {
         "services": {
-            "vitals_ingestion": "error" if anomalies else "healthy",
-            "medication_alerts": "healthy",
-            "lab_routing": "healthy",
-            "patient_portal": "healthy",
+            key.removesuffix("-svc").replace("-", "_"): ("healthy" if p["status"] == "healthy" else "error")
+            for key, p in health.items()
         },
+        "service_health": list(health.values()),
         "active_incident": active.incident_id if active else None,
         "incident_status": active.status.value if active else "none",
+        "incident_in_progress": _incident_in_progress(),
         "patients_at_risk": active.blast_radius.patients_at_risk if active and active.blast_radius else 0,
-        "anomaly_count": len(anomalies),
+        "anomaly_count": sum(1 for p in health.values() if p["status"] != "healthy"),
+        "platform": "cloud_run" if CLOUD_RUN_ENABLED else "local",
     }
+
+
+def _incident_in_progress() -> bool:
+    active = get_active_incident()
+    return bool(active and active.status not in (IncidentStatus.RESOLVED, IncidentStatus.FAILED))
 
 
 # ============================================================
 # Agent Pipeline (the core demo flow)
 # ============================================================
 
-async def _run_agent_pipeline(incident: Incident, anomaly: dict):
+_background: set[asyncio.Task] = set()
+
+
+def _spawn(coro):
+    task = asyncio.create_task(coro)
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+
+
+async def _open_incident(anomaly: dict):
+    """Called by the live monitor when a service has failed two probe rounds in a row."""
+    incident = Incident(anomaly=anomaly)
+    store_incident_sync(incident)
+    incident.status = IncidentStatus.ANALYZING
+    add_audit(incident.incident_id, AuditEventType.DETECTION,
+              f"Live probes detected: {anomaly['problem']}", confidence=0.98,
+              details={"evidence": anomaly.get("evidence", [])})
+    q = get_stream_queue()
+    await q.put(f"INCIDENT {incident.incident_id} -- {anomaly['problem']}")
+    for ev in anomaly.get("evidence", []):
+        await q.put(f"  [{ev['type']}] {ev['display_name']}")
+    _spawn(_run_incident(incident.incident_id))
+
+
+async def _run_incident(incident_id: str):
+    """The ADK agent works the incident; anything it leaves undone is completed deterministically."""
+    if is_gemini_configured():
+        try:
+            from servidor_agent.agent import run_incident_agent
+            await run_incident_agent(incident_id)
+        except Exception as e:
+            logger.exception("ADK agent run failed")
+            await get_stream_queue().put(f"Warning: ADK agent stopped ({str(e)[:120]}). Continuing with the deterministic pipeline.")
+
+    await _complete_pipeline(incident_id)
+    await advance_plan(incident_id)
+
+
+async def _complete_pipeline(incident_id: str):
+    incident = get_incident(incident_id)
+    anomaly = incident.anomaly
     q = get_stream_queue()
 
-    incident.status = IncidentStatus.ANALYZING
-    add_audit(incident.incident_id, AuditEventType.DETECTION, f"Anomaly detected: {anomaly['problem']} on {anomaly['service']}", confidence=0.98)
-    await q.put(f"INCIDENT {incident.incident_id} -- Anomaly detected on {anomaly['service']}")
-    await asyncio.sleep(0.5)
+    if not incident.blast_radius:
+        incident.blast_radius = await calculate_blast_radius(incident_id, anomaly)
+    br = incident.blast_radius
 
-    # Step 1: Blast Radius
-    br = await calculate_blast_radius(incident.incident_id, anomaly)
-    incident.blast_radius = br
+    if not incident.notifications:
+        try:
+            incident.notifications = await dispatch_notifications(
+                incident_id=incident_id, service_id=anomaly.get("service", ""),
+                anomaly=anomaly, blast_radius_data=br.model_dump(mode="json"),
+            )
+        except Exception as e:
+            logger.error(f"Notification dispatch failed: {e}")
+            await q.put(f"Warning: Clinical notifications failed: {e}")
 
-    # Step 2: Clinical Notifications (Feature 6)
-    try:
-        notifications = await dispatch_notifications(
-            incident_id=incident.incident_id,
-            service_id=anomaly.get("service", ""),
-            anomaly=anomaly,
-            blast_radius_data=br.model_dump(mode="json"),
-        )
-        incident.notifications = notifications
-    except Exception as e:
-        logger.error(f"Notification dispatch failed: {e}")
-        await q.put(f"Warning: Clinical notifications failed: {e}")
+    if not incident.remediation_plan:
+        incident.remediation_plan = await generate_remediation_plan(incident_id, anomaly)
 
-    # Step 3: Remediation Plan
-    plan = await generate_remediation_plan(incident.incident_id, anomaly)
-    incident.remediation_plan = plan
-    incident.status = IncidentStatus.PLAN_READY
+    if not incident.briefings:
+        try:
+            incident.briefings = await generate_briefings(
+                incident_id=incident_id, anomaly=anomaly,
+                blast_radius_data=br.model_dump(mode="json"),
+                remediation_plan=[s.model_dump(mode="json") for s in incident.remediation_plan],
+            )
+        except Exception as e:
+            logger.error(f"Briefing generation failed: {e}")
+            await q.put(f"Warning: Briefing generation failed: {e}")
 
-    # Step 4: Multi-Audience Briefings (Feature 4)
-    try:
-        briefings = await generate_briefings(
-            incident_id=incident.incident_id,
-            anomaly=anomaly,
-            blast_radius_data=br.model_dump(mode="json"),
-            remediation_plan=[s.model_dump(mode="json") for s in plan],
-        )
-        incident.briefings = briefings
-    except Exception as e:
-        logger.error(f"Briefing generation failed: {e}")
-        await q.put(f"Warning: Briefing generation failed: {e}")
-
-    # Flush to DB after all data is collected
-    await flush_incident(incident.incident_id)
-
-    # Step 5: Auto-execute LOW risk steps
-    for step in plan:
-        req = get_step_approval_requirement(step.risk_level)
-        if req["auto_execute"]:
-            if req["delay_seconds"] > 0:
-                await q.put(f"Auto-executing step {step.order} in {req['delay_seconds']}s (LOW risk)...")
-                await asyncio.sleep(req["delay_seconds"])
-            step.status = StepStatus.APPROVED
-            add_audit(incident.incident_id, AuditEventType.APPROVAL, f"Auto-approved: {step.description}", actor="trust-matrix")
-            await execute_step(incident.incident_id, step)
-
-    remaining = [s for s in plan if s.status == StepStatus.PENDING]
-    if not remaining:
-        await _resolve_incident(incident.incident_id)
-
-
-async def _resolve_incident(incident_id: str):
-    """Handle incident resolution + compliance report generation."""
-    await check_and_resolve(incident_id)
-
-    # Step 6: Compliance Report (Feature 7) — after resolution
-    try:
-        report = await generate_compliance_report(incident_id)
-        inc = get_incident(incident_id)
-        if inc:
-            inc.compliance_report = report
-    except Exception as e:
-        logger.error(f"Compliance report generation failed: {e}")
-        q = get_stream_queue()
-        await q.put(f"Warning: Compliance report failed: {e}")
-
-    # Final flush
+    if incident.status == IncidentStatus.ANALYZING:
+        incident.status = IncidentStatus.PLAN_READY
     await flush_incident(incident_id)
 
 
 # ============================================================
-# Simulation Endpoint
+# Chaos: inject a real fault into a live hospital service
 # ============================================================
 
 @app.post("/api/v1/simulate/failure")
-async def trigger_failure(background_tasks: BackgroundTasks, request: SimulateRequest = SimulateRequest()):
-    if get_active_incident():
-        raise HTTPException(400, "An incident is already active. Resolve it first.")
+async def trigger_failure(request: SimulateRequest = SimulateRequest()):
+    if _incident_in_progress():
+        raise HTTPException(400, "An incident is already in progress. Resolve or reset it first.")
+    try:
+        service = fleet.resolve_service(request.service)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if request.failure_type not in fleet.FAULT_MODES:
+        raise HTTPException(400, f"failure_type must be one of {list(fleet.FAULT_MODES)}")
 
-    if is_dynatrace_configured():
-        from dynatrace.client import get_client, get_entity_id
-        client = get_client()
-
-        entity_key = f"{request.service}-svc"
-        entity_id = get_entity_id(entity_key)
-
-        if entity_id:
-            await client.trigger_error_event(
-                entity_id=entity_id,
-                title=f"{request.failure_type} on {request.service}",
-                description=f"Simulated {request.severity} {request.failure_type} on {request.service}",
-                timeout_minutes=15,
-                properties={
-                    "servidor.simulated": "true",
-                    "servidor.failure_type": request.failure_type,
-                    "servidor.severity": request.severity,
-                },
-            )
-            logger.info(f"Triggered real Dynatrace error event on {entity_id}")
-            await asyncio.sleep(3)
-        else:
-            logger.warning(f"No entity ID found for {entity_key}, creating synthetic anomaly")
-
-    set_failure_active(True)
-
-    anomalies = await check_anomalies()
-
-    if not anomalies:
-        anomalies = [{
-            "problem_id": f"SIMULATED-{request.service}",
-            "problem": f"{request.failure_type} on {request.service}",
-            "service": f"{request.service}-svc",
-            "severity": request.severity.upper(),
-            "status": "OPEN",
-            "start_time": 0,
-            "affected_entities": [f"{request.service}-svc"],
-            "evidence": [{"type": "SIMULATED", "display_name": request.failure_type, "entity": request.service}],
-            "management_zones": [],
-            "raw": {},
-        }]
-
-    incident = Incident(anomaly=anomalies[0])
-    store_incident_sync(incident)
-
-    background_tasks.add_task(_run_agent_pipeline, incident, anomalies[0])
+    q = get_stream_queue()
+    how = "deploying a faulty release to Cloud Run" if CLOUD_RUN_ENABLED else "injecting the fault in-process"
+    await q.put(f"💥 Chaos: {request.failure_type} on {service} ({how})...")
+    try:
+        result = await fleet.inject_fault(service, request.failure_type)
+    except Exception as e:
+        logger.exception("Fault injection failed")
+        raise HTTPException(502, f"Fault injection failed: {e}")
+    await q.put(f"💥 Fault live on revision {result['revision']}. Servidor has not been told; waiting for its probes to notice.")
 
     return {
-        "status": "failure_simulated",
-        "incident_id": incident.incident_id,
-        "message": f"{request.failure_type} on {request.service} simulated. Agent pipeline started.",
-        "dynatrace_event_sent": is_dynatrace_configured(),
+        "status": "fault_injected",
+        "service": service,
+        "failure_type": request.failure_type,
+        "method": result["method"],
+        "revision": result["revision"],
+        "incident_id": None,
+        "message": "Fault injected into the live service. The agent will open an incident when its probes detect it.",
     }
+
+
+@app.post("/api/v1/chaos/reset")
+async def chaos_reset():
+    """Return every unhealthy service to its stable release."""
+    health = await fleet.probe_all()
+    cleared = []
+    for key, probe in health.items():
+        if probe["status"] != "healthy":
+            monitor.suppress(key, 180 if CLOUD_RUN_ENABLED else 15)
+            _spawn(fleet.clear_fault(key))
+            cleared.append(key)
+    return {"status": "resetting", "services": cleared}
 
 
 # ============================================================
@@ -302,25 +294,22 @@ async def approve_step(incident_id: str, step_order: int, background_tasks: Back
     if step.status != StepStatus.PENDING:
         raise HTTPException(400, f"Step {step_order} is already {step.status.value}")
 
+    if step.risk_level == RiskLevel.CRITICAL:
+        raise HTTPException(403, "CRITICAL-risk steps cannot be approved from the console")
+
     step.status = StepStatus.APPROVED
     add_audit(incident_id, AuditEventType.APPROVAL, f"Approved by admin: {step.description}", actor="admin@hospital.demo")
 
     q = get_stream_queue()
     await q.put(f"Step {step.order} approved by admin: {step.description}")
 
-    async def _execute_and_check():
-        await execute_step(incident_id, step)
-        remaining = [s for s in inc.remediation_plan if s.status == StepStatus.PENDING]
-        if not remaining:
-            await _resolve_incident(incident_id)
-
-    background_tasks.add_task(_execute_and_check)
+    background_tasks.add_task(advance_plan, incident_id)
 
     return {"status": "approved", "step": step.order, "action": step.description}
 
 
 @app.post("/api/v1/incidents/{incident_id}/reject/{step_order}")
-async def reject_step(incident_id: str, step_order: int):
+async def reject_step(incident_id: str, step_order: int, background_tasks: BackgroundTasks):
     inc = get_incident(incident_id)
     if not inc:
         raise HTTPException(404, "Incident not found")
@@ -337,9 +326,7 @@ async def reject_step(incident_id: str, step_order: int):
     q = get_stream_queue()
     await q.put(f"Step {step.order} rejected by admin: {step.description}")
 
-    remaining = [s for s in inc.remediation_plan if s.status == StepStatus.PENDING]
-    if not remaining:
-        await _resolve_incident(incident_id)
+    background_tasks.add_task(advance_plan, incident_id)
 
     return {"status": "rejected", "step": step.order, "action": step.description}
 
@@ -368,7 +355,9 @@ async def validate_custom_action(request: ActionRequest):
 async def reset_incident(incident_id: str):
     set_failure_active(False)
     clear_active_incident()
-    return {"status": "reset", "message": "Incident cleared. System ready for next simulation."}
+    reset = await chaos_reset()
+    return {"status": "reset", "services_resetting": reset["services"],
+            "message": "Incident cleared. Faulty services are returning to their stable release."}
 
 
 # ============================================================
@@ -541,6 +530,11 @@ def config_status():
         "dynatrace_configured": is_dynatrace_configured(),
         "dynatrace_url": DYNATRACE_URL or None,
         "dynatrace_poll_interval": DYNATRACE_POLL_INTERVAL,
+        "agent_framework": "google-adk",
+        "gemini_via_vertexai": USE_VERTEXAI,
+        "platform": "cloud_run" if CLOUD_RUN_ENABLED else "local",
+        "email_configured": is_email_configured(),
+        "monitor_interval_seconds": MONITOR_INTERVAL,
     }
 
 

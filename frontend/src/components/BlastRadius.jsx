@@ -10,7 +10,7 @@ export default function BlastRadius({ data, affectedService }) {
   // Animate counter
   useEffect(() => {
     let startTime;
-    const duration = 1200; // 1.2s
+    const duration = 1200;
     
     const animate = (time) => {
       if (!startTime) startTime = time;
@@ -32,65 +32,49 @@ export default function BlastRadius({ data, affectedService }) {
 
   if (!data) return null;
 
-  // Helper for dependency graph pills
-  const renderPill = (serviceName, isAffected) => (
-    <span style={{ 
-      background: isAffected ? 'var(--status-critical-bg)' : 'var(--surface-container-high)',
-      color: isAffected ? 'var(--status-critical)' : 'var(--on-surface-variant)',
-      border: `1px solid ${isAffected ? 'var(--status-critical)' : 'var(--outline-variant)'}`,
-      padding: '2px 8px',
-      borderRadius: 'var(--radius-sm)',
-      fontFamily: 'var(--font-jetbrains)',
-      fontSize: '12px'
-    }}>
-      {serviceName}
-    </span>
-  );
+  const isAffected = (svc) => {
+    if (!affectedService) return false;
+    if (svc === affectedService) return true;
+    if (affectedService === 'vitals-ingestion' && svc === 'medication-alerts') return true;
+    if (affectedService === 'medication-alerts' && svc === 'vitals-ingestion') return true;
+    if (affectedService === 'lab-routing' && svc === 'patient-portal') return true;
+    return false;
+  };
 
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-      <div className="text-body-base" style={{ fontWeight: 600, color: 'var(--on-surface)' }}>
+    <div className="card blast-radius-card">
+      <div className="text-body-base" style={{ fontWeight: 600 }}>
         Patients Affected
       </div>
       
-      <div className="text-hero-metric" style={{ color: 'var(--status-critical)', fontSize: '56px', lineHeight: 1 }}>
-        {count}
+      <div className="blast-hero-row">
+        <span className="text-hero-metric" style={{ color: 'var(--status-critical)', fontSize: '56px', lineHeight: 1 }}>
+          {count}
+        </span>
       </div>
       
-      <div style={{ display: 'flex', gap: 'var(--spacing-lg)', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <span className="text-body-base" style={{ fontWeight: 700, color: 'var(--primary)' }}>{data.critical_patients}</span>
+      <div className="blast-stat-row">
+        <div className="blast-stat">
+          <span className="text-body-base blast-stat-value" style={{ color: 'var(--primary)' }}>{data.critical_patients}</span>
           <span className="text-body-base" style={{ color: 'var(--on-surface-variant)' }}>ICU Critical</span>
         </div>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <span className="text-body-base" style={{ fontWeight: 700, color: 'var(--on-surface)' }}>{data.affected_workflows?.length || 0}</span>
+        <div className="blast-stat">
+          <span className="text-body-base blast-stat-value">{data.affected_workflows?.length || 0}</span>
           <span className="text-body-base" style={{ color: 'var(--on-surface-variant)' }}>Workflows Disrupted</span>
         </div>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <span className="text-body-base" style={{ fontWeight: 700, color: 'var(--primary)' }}>{data.estimated_harm_minutes} min</span>
+        <div className="blast-stat">
+          <span className="text-body-base blast-stat-value" style={{ color: 'var(--primary)' }}>{data.estimated_harm_minutes} min</span>
           <span className="text-body-base" style={{ color: 'var(--on-surface-variant)' }}>to Harm</span>
         </div>
       </div>
       
-      <div 
-        style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--primary)', marginTop: 'var(--spacing-sm)' }}
-        onClick={() => setExpanded(!expanded)}
-      >
+      <button className="blast-wards-toggle" onClick={() => setExpanded(!expanded)}>
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <span className="text-body-base">View affected wards</span>
-      </div>
+        <span>View affected wards</span>
+      </button>
       
       {expanded && (
-        <div style={{ 
-          padding: 'var(--spacing-md)', 
-          background: 'var(--surface-container-lowest)', 
-          borderRadius: 'var(--radius)',
-          fontFamily: 'var(--font-inter)',
-          fontSize: '14px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--spacing-sm)'
-        }}>
+        <div className="blast-wards-panel">
           {data.affected_wards?.map((ward, i) => (
             <div key={i}>
               <strong>{ward.ward_name}, Floor {ward.floor}</strong> — Beds {ward.beds.map(b => b.bed).join(', ')}
@@ -107,39 +91,36 @@ export default function BlastRadius({ data, affectedService }) {
         </div>
       )}
       
-      <hr style={{ borderTop: '1px solid var(--outline-variant)', borderBottom: 'none', margin: 'var(--spacing-md) 0' }} />
+      <hr className="blast-divider" />
       
-      <div className="text-body-base" style={{ color: 'var(--primary)', marginBottom: 'var(--spacing-sm)' }}>
-        Service Dependencies
-      </div>
+      <div className="text-body-base blast-deps-label">Service Dependencies</div>
       
-      <div style={{ display: 'flex', gap: 'var(--spacing-lg)', alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-          {renderPill('vitals-ingestion', affectedService === 'vitals-ingestion' || affectedService === 'medication-alerts')}
+      <div className="blast-deps-row">
+        <div className="blast-dep-chain">
+          <span className={`blast-dep-pill ${isAffected('vitals-ingestion') ? 'affected' : 'healthy'}`}>vitals-ingestion</span>
           <ArrowRight size={16} color="var(--on-surface-variant)" />
-          {renderPill('medication-alerts', affectedService === 'vitals-ingestion' || affectedService === 'medication-alerts')}
+          <span className={`blast-dep-pill ${isAffected('medication-alerts') ? 'affected' : 'healthy'}`}>medication-alerts</span>
         </div>
         
         <div style={{ width: '1px', height: '16px', background: 'var(--outline-variant)' }}></div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-          {renderPill('patient-portal', affectedService === 'lab-routing')}
+        <div className="blast-dep-chain">
+          <span className={`blast-dep-pill ${isAffected('patient-portal') ? 'affected' : 'healthy'}`}>patient-portal</span>
           <ArrowRight size={16} color="var(--on-surface-variant)" />
-          {renderPill('lab-routing', affectedService === 'lab-routing')}
+          <span className={`blast-dep-pill ${isAffected('lab-routing') ? 'affected' : 'healthy'}`}>lab-routing</span>
         </div>
       </div>
       
-      <div style={{ display: 'flex', gap: 'var(--spacing-md)', marginTop: 'var(--spacing-lg)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--status-critical)' }}></div>
+      <div className="blast-legend">
+        <div className="blast-legend-item">
+          <div className="blast-legend-dot" style={{ background: 'var(--status-critical)' }}></div>
           <span className="text-label-caps" style={{ color: 'var(--on-surface-variant)' }}>AFFECTED</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--outline)' }}></div>
+        <div className="blast-legend-item">
+          <div className="blast-legend-dot" style={{ background: 'var(--outline)' }}></div>
           <span className="text-label-caps" style={{ color: 'var(--on-surface-variant)' }}>HEALTHY</span>
         </div>
       </div>
-      
     </div>
   );
 }

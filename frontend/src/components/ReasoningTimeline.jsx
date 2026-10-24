@@ -7,14 +7,14 @@ export default function ReasoningTimeline({ logs, active, remediationPlan, onSte
   const pendingSteps = remediationPlan?.filter(s => s.status === 'pending') || [];
   
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', marginTop: 'var(--spacing-md)' }}>
-      <h2 className="text-label-caps" style={{ color: 'var(--on-surface)', marginBottom: 'var(--spacing-lg)' }}>
+    <div className="reasoning-section">
+      <h2 className="text-label-caps reasoning-header">
         AGENT REASONING TIMELINE
       </h2>
       
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+      <div className="reasoning-timeline">
         {(!logs || logs.length === 0) && (
-          <div className="text-body-base" style={{ color: 'var(--on-surface-variant)', fontStyle: 'italic' }}>
+          <div className="text-body-base reasoning-empty">
             Waiting for events...
           </div>
         )}
@@ -37,44 +37,37 @@ export default function ReasoningTimeline({ logs, active, remediationPlan, onSte
           }
           
           return (
-            <div key={i} style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '12px' }}>
-                <div className={`status-dot ${dotClass}`} style={{ marginTop: '8px' }}></div>
-                {!isLast && <div style={{ width: '1px', flex: 1, backgroundColor: 'var(--outline-variant)', marginTop: '8px', marginBottom: '8px' }}></div>}
+            <div key={i} className="reasoning-entry" style={{ animationDelay: `${Math.min(i * 0.05, 0.5)}s` }}>
+              <div className="reasoning-connector">
+                <div className={`status-dot ${dotClass}`}></div>
+                {!isLast && <div className="reasoning-line"></div>}
               </div>
               
-              <div style={{ flex: 1, paddingBottom: isLast ? '0' : 'var(--spacing-lg)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center' }}>
+              <div className="reasoning-body" style={{ paddingBottom: isLast ? '0' : 'var(--spacing-lg)' }}>
+                <div className="reasoning-meta">
+                  <div className="reasoning-meta-left">
                     <span className="text-data-mono" style={{ color: 'var(--on-surface-variant)' }}>{log.timestamp}</span>
                     <span className="text-body-base" style={{ fontWeight: 600, color: 'var(--primary)' }}>{log.title}</span>
                   </div>
                   <Icon size={20} color={iconColor} />
                 </div>
                 
-                <div className="text-body-base" style={{ color: 'var(--on-surface-variant)', marginTop: '4px' }}>
-                  {log.content.split('\n')[0]} {/* Show first line as snippet */}
+                <div className="text-body-base reasoning-snippet">
+                  {log.content.split('\n')[0]}
                 </div>
                 
                 {log.content.includes('\n') && (
-                  <div 
-                    style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginTop: '8px', cursor: 'pointer', color: 'var(--primary)' }}
+                  <button 
+                    className="reasoning-expand-btn"
                     onClick={() => setExpandedIndex(isExpanded ? -1 : i)}
                   >
                     {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    <span className="text-body-base">Expand reasoning</span>
-                  </div>
+                    <span>Expand reasoning</span>
+                  </button>
                 )}
                 
                 {isExpanded && log.content.includes('\n') && (
-                  <div 
-                    className="text-data-mono" 
-                    style={{ 
-                      marginTop: 'var(--spacing-sm)', 
-                      color: 'var(--on-surface-variant)',
-                      whiteSpace: 'pre-wrap'
-                    }}
-                  >
+                  <div className="text-data-mono reasoning-expanded-content">
                     {log.content.substring(log.content.indexOf('\n') + 1)}
                   </div>
                 )}
@@ -83,16 +76,16 @@ export default function ReasoningTimeline({ logs, active, remediationPlan, onSte
           );
         })}
         
-        {/* Render pending approvals at the end of the timeline */}
+        {/* Pending approval cards */}
         {pendingSteps.map((step, i) => (
-          <div key={`pending-${i}`} style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '12px' }}>
+          <div key={`pending-${i}`} className="reasoning-pending">
+            <div className="reasoning-connector">
               <div className="status-dot warning" style={{ marginTop: '8px' }}></div>
             </div>
             
-            <div style={{ flex: 1, paddingBottom: '0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center' }}>
+            <div className="reasoning-pending-body">
+              <div className="reasoning-meta">
+                <div className="reasoning-meta-left">
                   <span className="text-data-mono" style={{ color: 'var(--on-surface-variant)' }}>
                     {new Date().toLocaleTimeString('en-US', { hour12: false })}
                   </span>
@@ -101,46 +94,21 @@ export default function ReasoningTimeline({ logs, active, remediationPlan, onSte
                 <Hourglass size={20} color="var(--status-warning)" />
               </div>
               
-              <div className="text-body-base" style={{ color: 'var(--on-surface-variant)', marginTop: '4px' }}>
+              <div className="text-body-base reasoning-snippet">
                 Step {step.order}: {step.action} ({step.risk_level.toLowerCase()} risk)
               </div>
               
-              <div style={{ display: 'flex', gap: 'var(--spacing-md)', marginTop: '12px' }}>
-                <button 
-                  className="btn" 
-                  style={{ 
-                    background: 'transparent', 
-                    color: 'var(--status-safe)',
-                    border: '1px solid var(--status-safe)',
-                    padding: '6px 16px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    letterSpacing: '0.05em'
-                  }}
-                  onClick={() => onStepApproved(step.order)}
-                >
+              <div className="reasoning-pending-actions">
+                <button className="btn-approve" onClick={() => onStepApproved(step.order)}>
                   APPROVE
                 </button>
-                <button 
-                  className="btn" 
-                  style={{ 
-                    background: 'transparent',
-                    color: 'var(--on-surface-variant)',
-                    border: '1px solid var(--outline-variant)',
-                    padding: '6px 16px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    letterSpacing: '0.05em'
-                  }}
-                  onClick={() => onStepRejected(step.order)}
-                >
+                <button className="btn-reject" onClick={() => onStepRejected(step.order)}>
                   REJECT
                 </button>
               </div>
             </div>
           </div>
         ))}
-        
       </div>
     </div>
   );
