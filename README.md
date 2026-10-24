@@ -4,12 +4,12 @@ Hospitals run on software—vitals monitors, medication alerts, lab result routi
 
 **Servidor** is an AI agent that bridges this gap. It watches the services a hospital runs on, turns a technical failure into a clinical risk assessment (which patients, which ICU beds, how long until harm), pages the right staff, and repairs the infrastructure—doing safe things on its own, asking a human before risky ones, and refusing dangerous ones.
 
-Built with **Google ADK + Gemini** on **Google Cloud Run**, with optional **Dynatrace** integration.
+Built with **Google ADK** on **Google Cloud Run**. Reasoning runs on **Groq** first with **Gemini** as automatic fallback, with optional **Dynatrace** integration.
 
 ## How it works
 
 1. **Detect.** The agent continuously probes four live hospital services (vitals ingestion, medication alerts, lab routing, patient portal), measuring latency, error rate and the revision being served. Two unhealthy rounds in a row open an incident, with the measurements and deployment history as evidence.
-2. **Reason.** A Google ADK agent (`servidor_guardian`) works the incident with tools: inspect the service, assess the clinical blast radius, notify clinical staff, plan remediation, execute steps, brief stakeholders.
+2. **Reason.** A Google ADK agent, running on Groq (a native ADK model adapter) and handing over to Gemini mid-incident if Groq fails, (`servidor_guardian`) works the incident with tools: inspect the service, assess the clinical blast radius, notify clinical staff, plan remediation, execute steps, brief stakeholders.
 3. **Guard.** The trust matrix runs as ADK's `before_tool_callback`, before every tool call. NONE/LOW-risk steps run automatically, MEDIUM/HIGH wait for a human, CRITICAL and forbidden actions are refused. Each action has a minimum risk level enforced in code, so the model cannot downgrade a risky action. Plans run strictly in order.
 4. **Act.** Remediation is real: scale out, restart and roll back to the last known-good revision through the Cloud Run Admin API.
 5. **Verify.** Recovery is confirmed by probing the live service. If it is still unhealthy, the agent re-plans (proposes a rollback for approval) or escalates.
@@ -42,7 +42,9 @@ This builds and deploys the four services and the agent, each capped at one inst
 
 | Variable | Purpose |
 |---|---|
-| `GEMINI_API_KEY_1..10` | Gemini API keys (rotated on rate limits) |
+| `GROQ_API_KEY`, `GROQ_API_KEY_1..5` | Groq keys: the primary engine (rotated on rate limits) |
+| `GROQ_MODEL` / `GROQ_AGENT_MODEL` | Groq model for analysis / for the ADK agent loop |
+| `GEMINI_API_KEY_1..10` | Gemini API keys: the fallback engine |
 | `GEMINI_MODEL` / `ADK_MODEL` | Model for analysis / for the ADK agent loop |
 | `GOOGLE_GENAI_USE_VERTEXAI` | `true` to use Vertex AI via the service account instead of keys |
 | `MONGODB_URI`, `MONGODB_DB` | Persistence (falls back to JSON files) |
@@ -54,7 +56,8 @@ This builds and deploys the four services and the agent, each capped at one inst
 
 | Layer | Technology |
 |---|---|
-| Agent | Google ADK 2.x, Gemini |
+| Agent | Google ADK 2.x |
+| LLM | Groq (primary), Gemini (fallback) |
 | Infrastructure | Google Cloud Run (Admin API v2) |
 | Backend | FastAPI (Python 3.12), Server-Sent Events |
 | Frontend | React + Vite |

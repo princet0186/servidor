@@ -1,4 +1,6 @@
-"""Gemini reasoning engine with circular API key rotation.
+"""Reasoning prompts plus the Gemini transport (with circular API key rotation).
+
+Prompt builders call _call_llm(), which tries Groq first and falls back to Gemini.
 
 Uses key_manager for automatic key rotation and 429 retry.
 All Gemini calls go through _call_gemini() which handles:
@@ -58,6 +60,12 @@ def get_genai_client() -> tuple[str, genai.Client]:
 async def _emit(msg: str):
     q = get_stream_queue()
     await q.put(msg)
+
+
+async def _call_llm(prompt: str, temperature: float = 0.2, response_json: bool = True) -> str:
+    """Groq first, Gemini fallback (see llm/router.py)."""
+    from llm.router import call_llm
+    return await call_llm(prompt, SYSTEM_PROMPT, temperature=temperature, response_json=response_json)
 
 
 async def _call_gemini(prompt: str, temperature: float = 0.2, response_json: bool = True) -> str:
@@ -134,7 +142,7 @@ could be harmed if this problem is not resolved."""
     await _emit("Analyzing clinical blast radius with Gemini...")
 
     try:
-        text = await _call_gemini(prompt, temperature=0.2)
+        text = await _call_llm(prompt, temperature=0.2)
         result = json.loads(text)
 
         await _emit(f"Blast radius analysis complete:")
@@ -206,7 +214,7 @@ RULES:
     await _emit("  Evaluating recovery strategies...")
 
     try:
-        text = await _call_gemini(prompt, temperature=0.3)
+        text = await _call_llm(prompt, temperature=0.3)
         result = json.loads(text)
 
         if result.get("rejected_alternatives"):
@@ -259,7 +267,7 @@ Respond in this exact JSON format:
 }}"""
 
     try:
-        text = await _call_gemini(prompt, temperature=0.1)
+        text = await _call_llm(prompt, temperature=0.1)
         return json.loads(text)
     except Exception as e:
         logger.error(f"Gemini recovery verification failed: {e}")
@@ -289,7 +297,7 @@ RULES:
 - Administrator briefing: focus on numbers, duration, risk mitigation, regulatory compliance"""
 
     try:
-        text = await _call_gemini(prompt, temperature=0.3)
+        text = await _call_llm(prompt, temperature=0.3)
         return json.loads(text)
     except Exception as e:
         logger.error(f"Gemini briefing generation failed: {e}")
@@ -324,7 +332,7 @@ No protected health information (PHI) should be included — use location data o
 Respond with ONLY the narrative text, no JSON wrapping."""
 
     try:
-        text = await _call_gemini(prompt, temperature=0.2, response_json=False)
+        text = await _call_llm(prompt, temperature=0.2, response_json=False)
         return text
     except Exception as e:
         logger.error(f"Gemini compliance narrative failed: {e}")

@@ -60,7 +60,7 @@ trap 'rm -f "$ENV_FILE"' EXIT
 URL_LINES="$URL_LINES" python3 - "$ENV_FILE" <<EOF
 import json, os, sys
 urls = dict(l.split("=", 1) for l in os.environ["URL_LINES"].splitlines() if l)
-keep = {"GOOGLE_API_KEY", "GEMINI_MODEL", "ADK_MODEL", "MONGODB_URI", "MONGODB_DB", "DYNATRACE_URL",
+keep = {"GOOGLE_API_KEY", "GEMINI_MODEL", "ADK_MODEL", "GROQ_API_KEY", "GROQ_MODEL", "GROQ_AGENT_MODEL", "MONGODB_URI", "MONGODB_DB", "DYNATRACE_URL",
         "DYNATRACE_TOKEN", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "NOTIFY_EMAIL_FROM",
         "NOTIFY_EMAIL_TO", "FRONTEND_URL", "GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_CLOUD_LOCATION"}
 env = {}
@@ -69,7 +69,7 @@ for line in open(".env"):
     if line and not line.startswith("#") and "=" in line:
         k, _, v = line.partition("=")
         k, v = k.strip(), v.strip().strip("\"'")
-        if k in keep or k.startswith("GEMINI_API_KEY_"):
+        if k in keep or k.startswith(("GEMINI_API_KEY_", "GROQ_API_KEY_")):
             env[k] = v
 env.update({
     "CLOUD_RUN_ENABLED": "true", "GCP_PROJECT": "$PROJECT", "CLOUD_RUN_REGION": "$REGION",

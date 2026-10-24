@@ -1,7 +1,7 @@
 from models import RefusalResponse, RiskLevel, AuditEventType, ActionRequest
 from state import add_audit, get_stream_queue, get_active_incident
 from database import get_service_patient_map
-from config import is_gemini_configured
+from config import is_llm_configured
 import asyncio
 import json
 import logging
@@ -67,7 +67,7 @@ async def _classify_with_gemini(raw_action: str, target_service: str) -> dict | 
     Or None if classification fails.
     """
     try:
-        from gemini.gemini_engine import _call_gemini
+        from gemini.gemini_engine import _call_llm
     except ImportError:
         return None
 
@@ -117,7 +117,7 @@ Respond in this exact JSON format:
 Be conservative — if there's any doubt about patient safety, block the action."""
 
     try:
-        text = await _call_gemini(prompt, temperature=0.1)
+        text = await _call_llm(prompt, temperature=0.1)
         return json.loads(text)
     except Exception as e:
         logger.error(f"Gemini safety classification failed: {e}")
@@ -153,7 +153,7 @@ async def validate_action(request: ActionRequest, incident_id: str = None) -> Re
         )
 
     # Step 2: If no keyword match, use Gemini to classify intent
-    if is_gemini_configured():
+    if is_llm_configured():
         classification = await _classify_with_gemini(request.action, request.target_service)
 
         if classification and classification.get("blocked"):

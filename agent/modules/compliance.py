@@ -8,7 +8,7 @@ from models import ComplianceReport, AuditEventType, StepStatus
 from state import add_audit, get_stream_queue, get_incident
 from database import store_compliance_report, get_compliance_report
 from state import get_all_incidents, add_audit
-from config import is_gemini_configured
+from config import is_llm_configured
 from datetime import datetime
 import logging
 
@@ -40,7 +40,7 @@ async def generate_compliance_report(incident_id: str) -> dict:
     duration = inc.duration_seconds or 0
 
     # Generate narrative
-    if is_gemini_configured():
+    if is_llm_configured():
         narrative = await _gemini_narrative(inc)
     else:
         narrative = _static_narrative(inc)

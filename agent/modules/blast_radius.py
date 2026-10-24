@@ -1,7 +1,7 @@
 """Blast radius calculation — now backed by database/cache instead of hardcoded dicts."""
 from models import BlastRadius, RiskLevel, AuditEventType
 from state import add_audit, get_stream_queue
-from config import is_gemini_configured
+from config import is_llm_configured
 from database import get_service_patient_map, get_dependency_map_dict
 import logging
 
@@ -77,7 +77,7 @@ async def calculate_blast_radius(incident_id: str, anomaly: dict) -> BlastRadius
 
     await _emit(f"Investigating anomaly on {service}...")
 
-    if is_gemini_configured():
+    if is_llm_configured():
         return await _gemini_blast_radius(incident_id, anomaly, service_context, service_key)
     else:
         return await _static_blast_radius(incident_id, anomaly, service_context, service_key)

@@ -10,7 +10,7 @@ from datetime import datetime
 
 from models import RemediationStep, RiskLevel, StepStatus, AuditEventType, IncidentStatus
 from state import add_audit, get_stream_queue, get_incident, flush_incident
-from config import is_gemini_configured
+from config import is_llm_configured
 
 logger = logging.getLogger("servidor.remediation")
 
@@ -79,7 +79,7 @@ def catalog_for_prompt() -> dict:
 # ============================================================
 
 async def generate_remediation_plan(incident_id: str, anomaly: dict) -> list[RemediationStep]:
-    if is_gemini_configured():
+    if is_llm_configured():
         plan = await _gemini_remediation_plan(incident_id, anomaly)
     else:
         plan = await _static_remediation_plan(incident_id, anomaly)
@@ -349,7 +349,7 @@ async def _finalize(incident_id: str) -> str:
     inc.duration_seconds = (inc.resolved_at - inc.created_at).total_seconds()
     await _emit(f"✓ Recovery confirmed: {evidence}")
 
-    if is_gemini_configured():
+    if is_llm_configured():
         try:
             from gemini.gemini_engine import verify_recovery
             verdict = await verify_recovery(problem=inc.anomaly, metrics_snapshot=probe)

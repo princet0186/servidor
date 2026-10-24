@@ -1,6 +1,6 @@
 """Servidor Guardian: the Google ADK agent that runs an incident.
 
-Gemini decides which tool to call next. The trust matrix is enforced in
+The model (Groq first, Gemini as fallback) decides which tool to call next. The trust matrix is enforced in
 `before_tool_callback`, which runs before every tool call, so the model cannot
 execute a risky step, skip ahead in the plan, or run a forbidden action, however
 it phrases the request.
@@ -15,7 +15,7 @@ from google.adk.sessions import InMemorySessionService
 from google.adk.tools import ToolContext
 from google.genai import types
 
-from config import ADK_MODEL, USE_VERTEXAI
+from config import ADK_MODEL, GROQ_AGENT_MODEL, USE_VERTEXAI, is_gemini_configured
 from models import AuditEventType, StepStatus
 from state import add_audit, get_incident, get_stream_queue
 
@@ -172,12 +172,7 @@ async def trust_gate(tool, args: dict, tool_context: ToolContext) -> dict | None
 # Runner
 # ============================================================
 
-def build_agent(client) -> LlmAgent:
-    model = Gemini(
-        model=ADK_MODEL,
-        client=client,
-        retry_options=types.HttpRetryOptions(attempts=2, initial_delay=2),
-    )
+def build_agent(model) -> LlmAgent:
     return LlmAgent(
         name="servidor_guardian",
         model=model,
@@ -195,9 +190,6 @@ def _short_args(args: dict) -> str:
 
 async def run_incident_agent(incident_id: str) -> None:
     """Run the ADK agent on one incident, streaming its tool calls and reasoning to the console."""
-    from gemini.gemini_engine import get_genai_client
-    from gemini.key_manager import key_manager
-
     session_service = InMemorySessionService()
     session = await session_service.create_session(
         app_name=APP_NAME, user_id="servidor", state={"incident_id": incident_id}
@@ -208,24 +200,51 @@ async def run_incident_agent(incident_id: str) -> None:
     message = types.Content(role="user", parts=[types.Part(
         text=f"New incident opened from live monitoring:\n{json.dumps(briefing, indent=2, default=str)}")])
 
+    engines = _engine_chain()
+    if not engines:
+        raise RuntimeError("No LLM engine configured")
+    names = " → ".join(dict.fromkeys(label for label, _ in engines))
     await _emit("")
-    await _emit(f"🧠 ADK agent servidor_guardian ({ADK_MODEL}) taking command of {incident_id}")
+    await _emit(f"🧠 ADK agent servidor_guardian taking command of {incident_id} (engines: {names})")
 
-    # On a rate limit, switch API key and resume the same session: the agent keeps its history.
-    attempts = 1 if USE_VERTEXAI else max(key_manager.key_count, 1)
-    for attempt in range(attempts):
-        key, client = get_genai_client()
-        runner = Runner(app_name=APP_NAME, agent=build_agent(client), session_service=session_service)
+    # If an engine fails (rate limit, outage), hand over to the next one and resume the same
+    # session: the agent keeps its full history, so it continues instead of starting again.
+    for i, (label, make_model) in enumerate(engines):
+        runner = Runner(app_name=APP_NAME, agent=build_agent(make_model()), session_service=session_service)
         try:
             await _stream(runner, session.id, message, incident_id)
             return
         except Exception as e:
-            if ("429" not in str(e) and "RESOURCE_EXHAUSTED" not in str(e)) or attempt == attempts - 1:
+            is_gemini = label.startswith("gemini")
+            rate_limited = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
+            if i == len(engines) - 1 or (is_gemini and not rate_limited):
                 raise
-            key_manager.mark_failed(key)
-            await _emit("🧠 Gemini rate limit hit; switching API key and resuming the agent where it stopped")
+            nxt = engines[i + 1][0]
+            logger.warning(f"Agent engine {label} failed: {e}")
+            await _emit(f"🧠 {label} unavailable ({str(e)[:80]}); handing over to {nxt} and resuming where it stopped")
             message = types.Content(role="user", parts=[types.Part(
                 text="Continue working the incident from where you stopped. Do not repeat completed tool calls.")])
+
+
+def _engine_chain() -> list[tuple[str, object]]:
+    """(label, model factory) in priority order: every Groq key, then every Gemini key."""
+    from gemini.gemini_engine import get_genai_client
+    from gemini.key_manager import key_manager
+    from llm import groq_client
+    from llm.groq_adk import GroqLlm
+
+    chain = []
+    for key in groq_client.keys_in_rotation():
+        chain.append((f"groq:{GROQ_AGENT_MODEL}",
+                      lambda key=key: GroqLlm(model=GROQ_AGENT_MODEL, api_key=key)))
+    if is_gemini_configured():
+        def gemini_model():
+            _, client = get_genai_client()
+            return Gemini(model=ADK_MODEL, client=client,
+                          retry_options=types.HttpRetryOptions(attempts=2, initial_delay=2))
+        for _ in range(1 if USE_VERTEXAI else max(key_manager.key_count, 1)):
+            chain.append((f"gemini:{ADK_MODEL}", gemini_model))
+    return chain
 
 
 async def _stream(runner: Runner, session_id: str, message, incident_id: str):

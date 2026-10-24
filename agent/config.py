@@ -39,6 +39,17 @@ DYNATRACE_VERIFY_INTERVAL = int(os.getenv("DYNATRACE_VERIFY_INTERVAL", "15"))
 
 ENTITIES_FILE = Path(__file__).parent / "dynatrace" / "entities.json"
 
+# Groq: primary LLM engine (OpenAI-compatible API). Gemini is the fallback.
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")          # analysis calls
+GROQ_AGENT_MODEL = os.getenv("GROQ_AGENT_MODEL", "openai/gpt-oss-120b")  # ADK agent loop (tool calling)
+
+
+def groq_api_keys() -> list[str]:
+    keys = [os.getenv("GROQ_API_KEY", "")] + [os.getenv(f"GROQ_API_KEY_{i}", "") for i in range(1, 6)]
+    return list(dict.fromkeys(k.strip() for k in keys if k and k.strip()))
+
+
 # Gemini via Vertex AI (uses the Cloud Run service account instead of API keys)
 USE_VERTEXAI = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "false").lower() in ("1", "true")
 VERTEX_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "global")
@@ -88,8 +99,22 @@ def is_gemini_configured() -> bool:
     return key_manager.is_configured()
 
 
+def is_groq_configured() -> bool:
+    return bool(groq_api_keys())
+
+
+def is_llm_configured() -> bool:
+    """True when any reasoning engine (Groq or Gemini) is available."""
+    return is_groq_configured() or is_gemini_configured()
+
+
 def validate_config():
     from gemini.key_manager import key_manager
+
+    if is_groq_configured():
+        logger.info(f"Groq (primary) configured: model={GROQ_MODEL}, agent={GROQ_AGENT_MODEL}, keys={len(groq_api_keys())}")
+    else:
+        logger.warning("No Groq API keys found. Gemini will be the only reasoning engine.")
 
     if not DYNATRACE_URL:
         logger.warning("DYNATRACE_URL is not set. Dynatrace integration is DISABLED.")

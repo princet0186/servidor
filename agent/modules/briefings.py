@@ -8,7 +8,7 @@ Generates three different summaries of the same incident for:
 from models import IncidentBriefing, AuditEventType
 from state import add_audit, get_stream_queue
 from database import store_briefings
-from config import is_gemini_configured
+from config import is_llm_configured
 from datetime import datetime
 import logging
 
@@ -31,7 +31,7 @@ async def generate_briefings(
     await _emit("")
     await _emit("Generating multi-audience incident briefings...")
 
-    if is_gemini_configured():
+    if is_llm_configured():
         briefings = await _gemini_briefings(anomaly, blast_radius_data, remediation_plan)
     else:
         briefings = _static_briefings(anomaly, blast_radius_data, remediation_plan)

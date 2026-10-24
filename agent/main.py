@@ -31,7 +31,8 @@ from database import (
     get_service_patient_map, get_dependency_graph,
 )
 from config import (
-    validate_config, is_dynatrace_configured, is_gemini_configured,
+    validate_config, is_dynatrace_configured, is_gemini_configured, is_llm_configured,
+    is_groq_configured, GROQ_MODEL, GROQ_AGENT_MODEL, GEMINI_MODEL,
     load_entity_mapping, FRONTEND_URL, CLOUD_RUN_ENABLED, MONITOR_INTERVAL,
     is_email_configured, USE_VERTEXAI,
 )
@@ -63,10 +64,21 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Dynatrace not configured -- running in MOCK MODE")
 
+    if is_groq_configured():
+        try:
+            from llm import groq_client
+            available = await groq_client.list_models()
+            for m in {GROQ_MODEL, GROQ_AGENT_MODEL}:
+                if m in available:
+                    logger.info(f"Groq model available: {m}")
+                else:
+                    logger.error(f"Groq model {m} is NOT available on this account. Options: {sorted(available)}")
+        except Exception as e:
+            logger.warning(f"Could not verify Groq models: {e}")
     if is_gemini_configured():
-        logger.info("Gemini reasoning engine is ENABLED" + (" (Vertex AI)" if USE_VERTEXAI else ""))
-    else:
-        logger.warning("Gemini not configured -- reasoning will use static fallbacks")
+        logger.info("Gemini reasoning engine is ENABLED" + (" (Vertex AI)" if USE_VERTEXAI else "") + " as fallback")
+    if not is_llm_configured():
+        logger.warning("No LLM configured -- reasoning will use static fallbacks")
 
     monitor_task = asyncio.create_task(monitor.run(_open_incident))
 
@@ -166,7 +178,7 @@ async def _open_incident(anomaly: dict):
 
 async def _run_incident(incident_id: str):
     """The ADK agent works the incident; anything it leaves undone is completed deterministically."""
-    if is_gemini_configured():
+    if is_llm_configured():
         try:
             from servidor_agent.agent import run_incident_agent
             await run_incident_agent(incident_id)
@@ -531,10 +543,22 @@ def config_status():
         "dynatrace_url": DYNATRACE_URL or None,
         "dynatrace_poll_interval": DYNATRACE_POLL_INTERVAL,
         "agent_framework": "google-adk",
+        "llm_engines": _engine_summary(),
         "gemini_via_vertexai": USE_VERTEXAI,
         "platform": "cloud_run" if CLOUD_RUN_ENABLED else "local",
         "email_configured": is_email_configured(),
         "monitor_interval_seconds": MONITOR_INTERVAL,
+    }
+
+
+def _engine_summary() -> dict:
+    from llm.router import usage, last_engine
+    return {
+        "primary": f"groq:{GROQ_MODEL}" if is_groq_configured() else None,
+        "agent_primary": f"groq:{GROQ_AGENT_MODEL}" if is_groq_configured() else None,
+        "secondary": f"gemini:{GEMINI_MODEL}" if is_gemini_configured() else None,
+        "usage": usage,
+        "last_engine": last_engine,
     }
 
 
