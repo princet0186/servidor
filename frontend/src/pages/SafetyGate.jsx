@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Shield, CheckCircle, XCircle, AlertTriangle, Clock, ChevronDown, ChevronUp, Lock, Unlock, Loader, Send } from 'lucide-react';
 import { getSafetyValidations, validateAction } from '../api/servidor';
 import './SafetyGate.css';
+import { parseServerTime } from '../utils/time';
 
 const riskColor = (risk) => {
   switch (risk) {
@@ -13,7 +14,7 @@ const riskColor = (risk) => {
 
 function formatTimestamp(iso) {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleTimeString('en-US', { hour12: false }); }
+  try { return parseServerTime(iso).toLocaleTimeString('en-US', { hour12: false }); }
   catch { return iso; }
 }
 

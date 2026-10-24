@@ -1,4 +1,6 @@
-"""Gemini reasoning engine with circular API key rotation.
+"""Reasoning prompts plus the Gemini transport (with circular API key rotation).
+
+Prompt builders call _call_llm(), which tries Groq first and falls back to Gemini.
 
 Uses key_manager for automatic key rotation and 429 retry.
 All Gemini calls go through _call_gemini() which handles:
@@ -8,7 +10,7 @@ All Gemini calls go through _call_gemini() which handles:
 """
 from google import genai
 from gemini.key_manager import key_manager
-from config import GEMINI_MODEL
+from config import GEMINI_MODEL, USE_VERTEXAI, GCP_PROJECT, VERTEX_LOCATION
 from state import get_stream_queue
 import json
 import logging
@@ -36,15 +38,34 @@ _clients: dict[str, genai.Client] = {}
 
 
 def _get_client(api_key: str) -> genai.Client:
-    """Get or create a cached client for this key."""
+    """Get or create a cached client for this key (or the Vertex AI client)."""
     if api_key not in _clients:
-        _clients[api_key] = genai.Client(api_key=api_key)
+        if api_key == "vertex":
+            _clients[api_key] = genai.Client(vertexai=True, project=GCP_PROJECT, location=VERTEX_LOCATION)
+        else:
+            _clients[api_key] = genai.Client(api_key=api_key)
     return _clients[api_key]
+
+
+def get_genai_client() -> tuple[str, genai.Client]:
+    """(key, client) for callers outside _call_gemini (the ADK agent). Rotates keys per call."""
+    if USE_VERTEXAI:
+        return "vertex", _get_client("vertex")
+    api_key = key_manager.get_next_key()
+    if not api_key:
+        raise RuntimeError("No Gemini API keys available")
+    return api_key, _get_client(api_key)
 
 
 async def _emit(msg: str):
     q = get_stream_queue()
     await q.put(msg)
+
+
+async def _call_llm(prompt: str, temperature: float = 0.2, response_json: bool = True) -> str:
+    """Groq first, Gemini fallback (see llm/router.py)."""
+    from llm.router import call_llm
+    return await call_llm(prompt, SYSTEM_PROMPT, temperature=temperature, response_json=response_json)
 
 
 async def _call_gemini(prompt: str, temperature: float = 0.2, response_json: bool = True) -> str:
@@ -54,10 +75,10 @@ async def _call_gemini(prompt: str, temperature: float = 0.2, response_json: boo
     Returns the raw response text.
     """
     last_error = None
-    attempts = max(key_manager.key_count, 1)
+    attempts = 1 if USE_VERTEXAI else max(key_manager.key_count, 1)
 
     for attempt in range(attempts):
-        api_key = key_manager.get_next_key()
+        api_key = "vertex" if USE_VERTEXAI else key_manager.get_next_key()
         if not api_key:
             raise RuntimeError("No Gemini API keys available")
 
@@ -70,7 +91,7 @@ async def _call_gemini(prompt: str, temperature: float = 0.2, response_json: boo
             if response_json:
                 config_kwargs["response_mime_type"] = "application/json"
 
-            response = client.models.generate_content(
+            response = await client.aio.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=prompt,
                 config=genai.types.GenerateContentConfig(**config_kwargs),
@@ -80,7 +101,7 @@ async def _call_gemini(prompt: str, temperature: float = 0.2, response_json: boo
 
         except Exception as e:
             error_str = str(e)
-            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+            if ("429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and not USE_VERTEXAI:
                 key_manager.mark_failed(api_key)
                 last_error = e
                 logger.warning(f"Rate limited on key ...{api_key[-6:]}, rotating (attempt {attempt + 1}/{attempts})")
@@ -121,7 +142,7 @@ could be harmed if this problem is not resolved."""
     await _emit("Analyzing clinical blast radius with Gemini...")
 
     try:
-        text = await _call_gemini(prompt, temperature=0.2)
+        text = await _call_llm(prompt, temperature=0.2)
         result = json.loads(text)
 
         await _emit(f"Blast radius analysis complete:")
@@ -145,8 +166,12 @@ could be harmed if this problem is not resolved."""
         return _fallback_blast_radius(service_context)
 
 
-async def generate_remediation_plan(problem: dict, blast_radius: dict, service_context: dict) -> list[dict]:
+async def generate_remediation_plan(problem: dict, blast_radius: dict, service_context: dict, action_catalog: dict | None = None) -> list[dict]:
     prompt = f"""Generate a remediation plan for this healthcare infrastructure problem.
+The evidence comes from live probes against the running service and from its deployment history.
+
+AVAILABLE ACTIONS (use these exact identifiers in "action"; anything else needs a human to do it manually):
+{json.dumps(action_catalog or {}, indent=2)}
 
 PROBLEM:
 {json.dumps(problem, indent=2, default=str)}
@@ -179,8 +204,9 @@ RULES:
 - Maximum 5 steps
 - Always include a verification step as the last step (risk_level: NONE)
 - Reject alternatives that would cause patient harm and explain why
-- Prefer rolling restarts over full restarts
+- Use the deployment history: if a new release started serving shortly before the problem began, a rollback is usually the real fix; restarts and scaling only buy time
 - Never recommend scaling below minimum replicas
+- risk_level can be higher than an action's min_risk, never lower
 - Confidence should reflect how likely this step is to succeed"""
 
     await _emit("")
@@ -188,7 +214,7 @@ RULES:
     await _emit("  Evaluating recovery strategies...")
 
     try:
-        text = await _call_gemini(prompt, temperature=0.3)
+        text = await _call_llm(prompt, temperature=0.3)
         result = json.loads(text)
 
         if result.get("rejected_alternatives"):
@@ -241,7 +267,7 @@ Respond in this exact JSON format:
 }}"""
 
     try:
-        text = await _call_gemini(prompt, temperature=0.1)
+        text = await _call_llm(prompt, temperature=0.1)
         return json.loads(text)
     except Exception as e:
         logger.error(f"Gemini recovery verification failed: {e}")
@@ -271,7 +297,7 @@ RULES:
 - Administrator briefing: focus on numbers, duration, risk mitigation, regulatory compliance"""
 
     try:
-        text = await _call_gemini(prompt, temperature=0.3)
+        text = await _call_llm(prompt, temperature=0.3)
         return json.loads(text)
     except Exception as e:
         logger.error(f"Gemini briefing generation failed: {e}")
@@ -306,7 +332,7 @@ No protected health information (PHI) should be included — use location data o
 Respond with ONLY the narrative text, no JSON wrapping."""
 
     try:
-        text = await _call_gemini(prompt, temperature=0.2, response_json=False)
+        text = await _call_llm(prompt, temperature=0.2, response_json=False)
         return text
     except Exception as e:
         logger.error(f"Gemini compliance narrative failed: {e}")

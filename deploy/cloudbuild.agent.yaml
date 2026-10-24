@@ -1,0 +1,5 @@
+# Builds the agent image from the repo root so data/ ships with it.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "agent/Dockerfile", "-t", "${_IMAGE}", "."]
+images: ["${_IMAGE}"]

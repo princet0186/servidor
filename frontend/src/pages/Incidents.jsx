@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Search, Filter, Clock, ChevronRight, Activity, ArrowUpDown, Loader } from 'lucide-react';
 import { listIncidents } from '../api/servidor';
 import './Incidents.css';
+import { parseServerTime } from '../utils/time';
 
 const severityColor = (sev) => {
   switch (sev) {
@@ -34,7 +35,7 @@ function formatDuration(seconds) {
 function formatTime(isoStr) {
   if (!isoStr) return '—';
   try {
-    const d = new Date(isoStr);
+    const d = parseServerTime(isoStr);
     return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
   } catch {
     return isoStr;
@@ -43,17 +44,19 @@ function formatTime(isoStr) {
 
 export default function Incidents() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const urlQuery = new URLSearchParams(location.search).get('q');
+  const [searchTerm, setSearchTerm] = useState(urlQuery || '');
   const [filterSeverity, setFilterSeverity] = useState('ALL');
 
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.has('q')) {
-      setSearchTerm(params.get('q'));
-    }
-  }, [location]);
+  // Follow ?q= from the top bar search (adjusting state during render, not in an effect)
+  const [prevQuery, setPrevQuery] = useState(urlQuery);
+  if (urlQuery !== prevQuery) {
+    setPrevQuery(urlQuery);
+    if (urlQuery) setSearchTerm(urlQuery);
+  }
 
   useEffect(() => {
     async function load() {
@@ -199,7 +202,7 @@ export default function Incidents() {
                   </td>
                   <td className="text-data-mono">{formatDuration(inc.duration)}</td>
                   <td>
-                    <button className="row-action" id={`view-${inc.id}`}>
+                    <button className="row-action" id={`view-${inc.id}`} onClick={() => navigate(`/incidents/${inc.id}`)}>
                       <ChevronRight size={16} />
                     </button>
                   </td>

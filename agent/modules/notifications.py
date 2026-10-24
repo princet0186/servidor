@@ -1,7 +1,8 @@
 """Feature 6: Clinical notification dispatcher.
 
 Generates and dispatches notifications to clinical staff when a service failure
-impacts patient care. SMS is mocked (logged + stored) — no Twilio dependency.
+impacts patient care. Each staff message is delivered for real by email to the demo
+on-call inbox (see modules/email_alerts.py); staff phone numbers and addresses are synthetic.
 """
 from models import ClinicalNotification, AuditEventType
 from state import add_audit, get_stream_queue
@@ -103,7 +104,21 @@ async def dispatch_notifications(
         icon = "📱" if channel == "sms" else "📧"
         await _emit(f"  {icon} {person['role']}, {ward_name} — {person['name']}")
 
-        logger.info(f"[MOCK {channel.upper()}] To: {person['name']} ({person.get('phone', person.get('email', ''))})")
+    # Deliver: one real email to the on-call inbox carrying every staff message
+    from modules import email_alerts
+    subject, body = email_alerts.incident_alert(
+        incident_id, display_name, failure_type, blast_radius_data, notifications
+    )
+    delivery = await email_alerts.send(subject, body)
+    for n in notifications:
+        n["delivery"] = "email" if delivery == "sent" else delivery
+        n["status"] = "sent" if delivery == "sent" else ("failed" if delivery == "failed" else "logged")
+    if delivery == "sent":
+        await _emit("  Alert email delivered to the on-call inbox")
+    elif delivery == "failed":
+        await _emit("  Warning: alert email delivery FAILED (check SMTP settings)")
+    else:
+        await _emit("  Email not configured: notifications logged only")
 
     # Persist
     await store_notifications(incident_id, notifications)
@@ -112,7 +127,7 @@ async def dispatch_notifications(
         incident_id, AuditEventType.NOTIFICATION,
         f"Dispatched {len(notifications)} clinical notifications",
         confidence=1.0,
-        details={"count": len(notifications), "channels": list(set(p.get("notification_channel", "sms") for p in staff))},
+        details={"count": len(notifications), "delivery": delivery},
     )
 
     await _emit(f"  {len(notifications)} notifications dispatched")
