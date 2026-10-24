@@ -41,7 +41,7 @@ ENTITIES_FILE = Path(__file__).parent / "dynatrace" / "entities.json"
 
 # Groq: primary LLM engine (OpenAI-compatible API). Gemini is the fallback.
 GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")          # analysis calls
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")          # analysis calls
 GROQ_AGENT_MODEL = os.getenv("GROQ_AGENT_MODEL", "openai/gpt-oss-120b")  # ADK agent loop (tool calling)
 
 

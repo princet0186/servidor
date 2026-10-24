@@ -166,6 +166,29 @@ could be harmed if this problem is not resolved."""
         return _fallback_blast_radius(service_context)
 
 
+def _compact_blast(br: dict) -> dict:
+    """Blast radius without per-bed lists: keeps prompts inside free-tier token limits."""
+    if not br:
+        return {}
+    wards = sorted({loc.get("ward_name", loc.get("ward")) for loc in br.get("icu_locations", [])})
+    return {
+        "patients_at_risk": br.get("patients_at_risk"),
+        "critical_patients": br.get("critical_patients"),
+        "estimated_harm_minutes": br.get("estimated_harm_minutes"),
+        "severity": br.get("severity"),
+        "affected_workflows": br.get("affected_workflows", []),
+        "icu_wards_affected": wards,
+        "general_wards_affected": [f"{w.get('ward_name', w.get('ward'))} ({w.get('beds_affected')} beds)" for w in br.get("general_wards", [])],
+    }
+
+
+def _compact_audit(audit_trail: list, limit: int = 40) -> list:
+    return [
+        {"time": e.get("timestamp"), "event": e.get("event_type"), "actor": e.get("actor"), "message": e.get("message", "")[:240]}
+        for e in audit_trail[:limit]
+    ]
+
+
 async def generate_remediation_plan(problem: dict, blast_radius: dict, service_context: dict, action_catalog: dict | None = None) -> list[dict]:
     prompt = f"""Generate a remediation plan for this healthcare infrastructure problem.
 The evidence comes from live probes against the running service and from its deployment history.
@@ -177,10 +200,10 @@ PROBLEM:
 {json.dumps(problem, indent=2, default=str)}
 
 BLAST RADIUS:
-{json.dumps(blast_radius, indent=2, default=str)}
+{json.dumps(_compact_blast(blast_radius), indent=2, default=str)}
 
 AFFECTED SERVICE CONTEXT:
-{json.dumps(service_context, indent=2)}
+{json.dumps({k: v for k, v in service_context.items() if k not in ("icu_locations", "general_wards_affected")}, indent=2)}
 
 Respond in this exact JSON format:
 {{
@@ -306,18 +329,21 @@ RULES:
 
 # ── Feature 7: Compliance narrative ──
 
-async def generate_compliance_narrative(audit_trail: list, blast_radius: dict, remediation: list) -> str:
+async def generate_compliance_narrative(audit_trail: list, blast_radius: dict, remediation: list, incident_id: str = "") -> str:
     """Generate a HIPAA/Joint Commission compliance narrative."""
+    steps = [{k: s.get(k) for k in ("order", "action", "description", "risk_level", "status", "executed_at")} for s in remediation]
     prompt = f"""Generate a formal compliance incident report narrative for a healthcare infrastructure incident.
 
-AUDIT TRAIL:
-{json.dumps(audit_trail[:20], indent=2, default=str)}
+INCIDENT ID: {incident_id} (use exactly this identifier; do not invent reference numbers)
+
+AUDIT TRAIL (UTC):
+{json.dumps(_compact_audit(audit_trail), indent=1, default=str)}
 
 BLAST RADIUS:
-{json.dumps(blast_radius, indent=2, default=str)}
+{json.dumps(_compact_blast(blast_radius), indent=1, default=str)}
 
 REMEDIATION ACTIONS:
-{json.dumps(remediation, indent=2, default=str)}
+{json.dumps(steps, indent=1, default=str)}
 
 Write a formal incident report narrative suitable for HIPAA and Joint Commission compliance review.
 Include:

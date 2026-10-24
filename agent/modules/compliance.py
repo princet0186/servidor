@@ -87,6 +87,7 @@ async def _gemini_narrative(inc) -> str:
             audit_trail=audit_trail,
             blast_radius=blast_radius,
             remediation=remediation,
+            incident_id=inc.incident_id,
         )
     except Exception as e:
         logger.error(f"Gemini compliance narrative failed: {e}")

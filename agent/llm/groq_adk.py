@@ -110,6 +110,9 @@ class GroqLlm(BaseLlm):
         data = await groq_client.chat(body, self.api_key)
         msg = data["choices"][0]["message"]
 
+        # Keep only declared parameters: models sometimes send junk such as {"": {}} for no-arg tools
+        declared = {t["function"]["name"]: set(t["function"]["parameters"].get("properties", {})) for t in tools}
+
         parts = []
         if msg.get("content"):
             parts.append(types.Part(text=msg["content"]))
@@ -118,6 +121,11 @@ class GroqLlm(BaseLlm):
                 args = json.loads(tc["function"].get("arguments") or "{}")
             except json.JSONDecodeError:
                 args = {}
+            if not isinstance(args, dict):
+                args = {}
+            allowed = declared.get(tc["function"]["name"])
+            if allowed is not None:
+                args = {k: v for k, v in args.items() if k in allowed}
             parts.append(types.Part(function_call=types.FunctionCall(
                 id=tc.get("id"), name=tc["function"]["name"], args=args)))
         if not parts:
