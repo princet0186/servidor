@@ -1,0 +1,325 @@
+/* No backdrop-filter on anything over the canvas: blurring a WebGL layer can blank it. */
+.twin {
+  position: relative;
+  height: 620px;
+  border-radius: var(--radius-xl, 12px);
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 20%, #0b1626 0%, #04070c 60%);
+  border: 1px solid #1b2a3c;
+  box-shadow: inset 0 0 0 1px rgba(158, 202, 255, 0.04), 0 30px 80px -40px rgba(32, 150, 243, 0.35);
+  isolation: isolate;
+}
+
+.twin.twin-state-incident {
+  border-color: rgba(255, 59, 79, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(255, 59, 79, 0.08), 0 30px 90px -40px rgba(255, 59, 79, 0.5);
+}
+
+.twin-fullscreen {
+  height: 100vh;
+  border-radius: 0;
+}
+
+.twin canvas {
+  touch-action: none;
+}
+
+/* ── HUD ── */
+.twin-hud {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  font-family: 'Inter', sans-serif;
+}
+
+.twin-hud-top {
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px 18px;
+  background: linear-gradient(180deg, rgba(4, 7, 12, 0.85), transparent);
+}
+
+.twin-title {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.twin-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #7fb4ff;
+}
+
+.twin-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #2fd39a;
+}
+
+.twin-state i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 12px currentColor;
+  animation: twin-blink 1.6s ease-in-out infinite;
+}
+
+.twin-state-chip-detecting { color: #ffb35c; }
+.twin-state-chip-incident { color: #ff3b4f; }
+.twin-state-chip-recovered { color: #2fd39a; }
+
+.twin-sub {
+  font-size: 12px;
+  color: #8fa3bb;
+}
+
+.twin-controls {
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.twin-controls button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(127, 180, 255, 0.22);
+  background: rgba(10, 18, 30, 0.9);
+  color: #cfe3ff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.twin-controls button:hover {
+  border-color: rgba(127, 180, 255, 0.55);
+}
+
+.twin-controls button.on {
+  background: rgba(32, 150, 243, 0.22);
+  border-color: rgba(127, 180, 255, 0.6);
+  color: #fff;
+}
+
+.twin-stats {
+  right: 18px;
+  top: 64px;
+  display: flex;
+  gap: 18px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(16, 7, 11, 0.88);
+  border: 1px solid rgba(255, 59, 79, 0.35);
+  animation: twin-rise 0.6s ease both;
+}
+
+.twin-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.twin-stats b {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.twin-stats b.crit { color: #ff3b4f; text-shadow: 0 0 18px rgba(255, 59, 79, 0.6); }
+.twin-stats b.warn { color: #ffb35c; }
+
+.twin-stats span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #b9c4d3;
+}
+
+.twin-legend {
+  left: 18px;
+  bottom: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11px;
+  color: #9fb0c5;
+}
+
+.twin-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.twin-legend .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.twin-legend .dot.safe { background: #2fd39a; box-shadow: 0 0 8px #2fd39a; }
+.twin-legend .dot.warn { background: #ffb35c; box-shadow: 0 0 8px #ffb35c; }
+.twin-legend .dot.crit { background: #ff3b4f; box-shadow: 0 0 8px #ff3b4f; }
+.twin-legend .ring {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid #9ecaff;
+}
+
+.twin-hint {
+  right: 18px;
+  bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(10, 18, 30, 0.9);
+  border: 1px solid rgba(127, 180, 255, 0.2);
+  font-size: 12px;
+  color: #cfe3ff;
+  white-space: nowrap;
+  animation: twin-rise 0.8s 0.6s ease both;
+}
+
+/* ── In-scene labels (drei Html) ── */
+.twin-floor-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #5f8fc7;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  user-select: none;
+}
+
+.twin-ward-label,
+.twin-service-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  white-space: nowrap;
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  color: #a9bed6;
+  text-shadow: 0 1px 6px #000;
+  pointer-events: none;
+  user-select: none;
+}
+
+.twin-ward-label b,
+.twin-service-label b {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.twin-ward-label.critical { color: #ffd0d5; }
+.twin-ward-label.critical b { color: #ff3b4f; }
+.twin-ward-label.warning b { color: #ffb35c; }
+
+.twin-service-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #dfe9f7;
+}
+
+.twin-service-label b { color: #2fd39a; font-weight: 600; }
+.twin-service-label.failing b { color: #ff3b4f; }
+.twin-service-label.cascade b { color: #ffb35c; }
+
+.twin-tooltip {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 190px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(8, 13, 22, 0.96);
+  border: 1px solid rgba(127, 180, 255, 0.3);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: #b9c4d3;
+  transform: translate(-50%, calc(-100% - 16px));
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.twin-tooltip strong { color: #fff; font-size: 12px; }
+.twin-tip-critical { color: #ff6b7a; font-weight: 600; }
+.twin-tip-warning { color: #ffb35c; font-weight: 600; }
+
+/* ── Loading / fallback ── */
+.twin-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #7fb4ff;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.twin-loading-orb {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 2px solid rgba(127, 180, 255, 0.2);
+  border-top-color: #7fb4ff;
+  animation: twin-spin 1s linear infinite;
+}
+
+@keyframes twin-blink { 50% { opacity: 0.35; } }
+@keyframes twin-spin { to { transform: rotate(360deg); } }
+@keyframes twin-rise { from { opacity: 0; transform: translateY(8px); } }
+.twin-hint { animation: twin-rise 0.8s 0.6s ease both, twin-fade-out 0.8s 9s ease forwards; }
+@keyframes twin-fade-out { to { opacity: 0; visibility: hidden; } }
+
+@media (max-width: 900px) {
+  .twin { height: 500px; }
+  .twin-controls button span { display: none; }
+  .twin-hint { display: none; }
+  .twin-legend { gap: 8px; font-size: 10px; }
+}
+
+@media (max-width: 640px) {
+  .twin { height: 460px; }
+  .twin-hud-top { padding: 12px; }
+  .twin-state { font-size: 11px; }
+  .twin-sub, .twin-legend { display: none; }
+  .twin-controls button { height: 30px; padding: 0 8px; }
+  .twin-stats { left: 10px; right: 10px; top: auto; bottom: 10px; gap: 8px; padding: 8px 10px; justify-content: space-around; }
+  .twin-stats b { font-size: 18px; }
+  .twin-stats span { font-size: 9px; }
+  /* Only label what matters on a small screen */
+  .twin-ward-label:not(.critical), .twin-service-label b { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .twin-state i, .twin-loading-orb { animation: none; }
+}

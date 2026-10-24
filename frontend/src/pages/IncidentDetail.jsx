@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, AlertTriangle, Clock, Shield, FileText, Users, Activity, CheckCircle, XCircle, Loader } from 'lucide-react';
-import { getIncident, approveStep, rejectStep, resetIncident, getBriefings, getComplianceReport } from '../api/servidor';
+import { getIncident, approveStep, rejectStep, resetIncident, getBriefings, getComplianceReport, getFacility, getDependencyGraph, getServices } from '../api/servidor';
+import ClinicalTwinPanel from '../components/twin/ClinicalTwinPanel';
 import BlastRadius from '../components/BlastRadius';
 import IncidentBriefing from '../components/IncidentBriefing';
 import ComplianceReport from '../components/ComplianceReport';
 import './IncidentDetail.css';
+import { parseServerTime } from '../utils/time';
 
 const riskColor = (risk) => {
   switch (risk) {
@@ -25,12 +27,26 @@ function formatDuration(seconds) {
 function formatTime(isoStr) {
   if (!isoStr) return '—';
   try {
-    return new Date(isoStr).toLocaleString('en-US', { 
+    return parseServerTime(isoStr).toLocaleString('en-US', { 
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false 
     });
   } catch {
     return isoStr;
   }
+}
+
+// Incident plus its briefings and compliance report (each optional).
+async function fetchIncidentBundle(incidentId) {
+  const bundle = { incident: null, briefings: null, compliance: null };
+  try {
+    const inc = await getIncident(incidentId);
+    bundle.incident = inc;
+    bundle.briefings = inc.briefings || await getBriefings(incidentId).catch(() => null);
+    bundle.compliance = inc.compliance_report || await getComplianceReport(incidentId).catch(() => null);
+  } catch (e) {
+    console.error('Failed to load incident', e);
+  }
+  return bundle;
 }
 
 export default function IncidentDetail() {
@@ -40,29 +56,32 @@ export default function IncidentDetail() {
   const [loading, setLoading] = useState(true);
   const [briefings, setBriefings] = useState(null);
   const [compliance, setCompliance] = useState(null);
+  const [twinData, setTwinData] = useState(null);
 
-  async function loadIncident() {
-    try {
-      const inc = await getIncident(incidentId);
-      setIncident(inc);
-      
-      if (inc.briefings) setBriefings(inc.briefings);
-      else {
-        try { const b = await getBriefings(incidentId); setBriefings(b); } catch {}
-      }
-      
-      if (inc.compliance_report) setCompliance(inc.compliance_report);
-      else {
-        try { const c = await getComplianceReport(incidentId); setCompliance(c); } catch {}
-      }
-    } catch (e) {
-      console.error('Failed to load incident', e);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let active = true;
+    Promise.all([getFacility(), getDependencyGraph(), getServices()])
+      .then(([facility, graph, services]) => { if (active) setTwinData({ facility, graph, services }); })
+      .catch((e) => console.error('Failed to load twin data', e));
+    return () => { active = false; };
+  }, []);
+
+  function apply(bundle) {
+    if (bundle.incident) setIncident(bundle.incident);
+    if (bundle.briefings) setBriefings(bundle.briefings);
+    if (bundle.compliance) setCompliance(bundle.compliance);
+    setLoading(false);
   }
 
-  useEffect(() => { loadIncident(); }, [incidentId]);
+  async function loadIncident() {
+    apply(await fetchIncidentBundle(incidentId));
+  }
+
+  useEffect(() => {
+    let active = true;
+    fetchIncidentBundle(incidentId).then((bundle) => { if (active) apply(bundle); });
+    return () => { active = false; };
+  }, [incidentId]);
 
   if (loading) {
     return (
@@ -153,6 +172,23 @@ export default function IncidentDetail() {
         </div>
       </div>
 
+      {/* 3D replay of the clinical blast radius */}
+      {br && (
+        <div className="anim-scale-in anim-delay-1">
+          <ClinicalTwinPanel
+            facility={twinData?.facility}
+            graph={twinData?.graph}
+            servicesMap={twinData?.services}
+            health={[]}
+            blast={br}
+            failingService={affectedService ? `${affectedService}-svc` : null}
+            incidentId={incident.incident_id}
+            replay
+            fallback={null}
+          />
+        </div>
+      )}
+
       {/* Blast Radius + Briefings */}
       {br && (
         <div className="incident-detail-grid anim-scale-in anim-delay-2">
@@ -215,7 +251,7 @@ export default function IncidentDetail() {
             {audit.map((entry, i) => (
               <div key={i} className="audit-entry">
                 <span className="audit-entry-time">
-                  {entry.timestamp ? new Date(entry.timestamp + 'Z').toLocaleTimeString('en-US', { hour12: false }) : '—'}
+                  {entry.timestamp ? parseServerTime(entry.timestamp).toLocaleTimeString('en-US', { hour12: false }) : '—'}
                 </span>
                 <span className="audit-entry-type" style={{ 
                   color: entry.event_type === 'refusal' ? 'var(--status-critical)' : 

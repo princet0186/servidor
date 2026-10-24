@@ -7,11 +7,13 @@ import NotificationLog from '../components/NotificationLog';
 import ComplianceReport from '../components/ComplianceReport';
 import DependencyGraph from '../components/DependencyGraph';
 import ServiceHealthStrip from '../components/ServiceHealthStrip';
+import ClinicalTwinPanel from '../components/twin/ClinicalTwinPanel';
 import { 
   getStatus, simulateFailure, subscribeToReasoning, getIncident, 
-  getServices, approveStep, rejectStep
+  getServices, getFacility, getDependencyGraph, approveStep, rejectStep
 } from '../api/servidor';
 import './Dashboard.css';
+import { parseServerTime } from '../utils/time';
 
 // ── Countdown Timer Component ──
 function CountdownTimer({ harmMinutes, startedAt, resolved }) {
@@ -20,7 +22,7 @@ function CountdownTimer({ harmMinutes, startedAt, resolved }) {
   useEffect(() => {
     if (!harmMinutes || !startedAt) return;
 
-    const deadline = new Date(startedAt).getTime() + (harmMinutes * 60 * 1000);
+    const deadline = parseServerTime(startedAt).getTime() + (harmMinutes * 60 * 1000);
 
     const tick = () => {
       const now = Date.now();
@@ -135,13 +137,18 @@ export default function Dashboard() {
   const [health, setHealth] = useState([]);
   const [platform, setPlatform] = useState(null);
   const [chaosMessage, setChaosMessage] = useState(null);
+  const [facility, setFacility] = useState(null);
+  const [graph, setGraph] = useState(null);
   const knownIncidentRef = useRef(null);
   
   // 1. Fetch static service data on mount
   useEffect(() => {
     async function loadData() {
       try {
-        setServices(await getServices());
+        const [svcMap, fac, deps] = await Promise.all([getServices(), getFacility(), getDependencyGraph()]);
+        setServices(svcMap);
+        setFacility(fac);
+        setGraph(deps);
       } catch (e) {
         console.error("Failed to load static data", e);
       }
@@ -226,7 +233,7 @@ export default function Dashboard() {
       if (inc.audit_trail) {
         const formattedLogs = inc.audit_trail.map(entry => ({
           title: entry.event_type.toUpperCase(),
-          timestamp: new Date(entry.timestamp + 'Z').toLocaleTimeString(),
+          timestamp: parseServerTime(entry.timestamp).toLocaleTimeString(),
           content: entry.message,
           event_type: entry.event_type
         }));
@@ -318,7 +325,7 @@ export default function Dashboard() {
           patients={vitalsStats.patients}
           icu={vitalsStats.icu}
           workflows={vitalsStats.workflows}
-          isSimulating={activeScenario === 'vitals'}
+          isSimulating={activeScenario === 'vitals' && !incidentResolved}
           onSimulate={() => handleSimulate('vitals')}
         />
         <ScenarioCard 
@@ -328,7 +335,7 @@ export default function Dashboard() {
           patients={medsStats.patients}
           icu={medsStats.icu}
           workflows={medsStats.workflows}
-          isSimulating={activeScenario === 'medication'}
+          isSimulating={activeScenario === 'medication' && !incidentResolved}
           onSimulate={() => handleSimulate('medication')}
         />
         <ScenarioCard 
@@ -338,7 +345,7 @@ export default function Dashboard() {
           patients={labsStats.patients}
           icu={labsStats.icu}
           workflows={labsStats.workflows}
-          isSimulating={activeScenario === 'labs'}
+          isSimulating={activeScenario === 'labs' && !incidentResolved}
           onSimulate={() => handleSimulate('labs')}
         />
       </div>
@@ -355,17 +362,30 @@ export default function Dashboard() {
       {/* Main Content */}
       <div className="dashboard-content">
         
-        {/* Blast Radius + Dependency Graph side by side */}
-        {blastData && (
-          <div className="dashboard-impact-grid anim-scale-in anim-delay-1">
-            <BlastRadius data={blastData} affectedService={affectedService} />
-            <DependencyGraph affectedService={affectedService} />
-          </div>
-        )}
+        {/* Clinical digital twin: 3D blast radius (2D panels if WebGL is unavailable) */}
+        <div className="dashboard-twin-grid anim-scale-in">
+          <ClinicalTwinPanel
+            facility={facility}
+            graph={graph}
+            servicesMap={services}
+            health={health}
+            blast={blastData}
+            failingService={blastData && affectedService ? `${affectedService}-svc` : null}
+            incidentId={activeIncidentId}
+            resolved={incidentResolved}
+            fallback={
+              <div className="dashboard-impact-grid">
+                {blastData && <BlastRadius data={blastData} affectedService={affectedService} />}
+                <DependencyGraph affectedService={affectedService} />
+              </div>
+            }
+          />
+        </div>
 
         {/* Briefings + Notifications side by side */}
-        {(briefings || (notifications && notifications.length > 0)) && (
+        {(blastData || briefings || (notifications && notifications.length > 0)) && (
           <div className="dashboard-features-grid anim-slide-up anim-delay-3">
+            {blastData && <BlastRadius data={blastData} affectedService={affectedService} />}
             {briefings && <IncidentBriefing briefings={briefings} />}
             {notifications && notifications.length > 0 && <NotificationLog notifications={notifications} />}
           </div>
@@ -378,15 +398,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Empty State */}
-        {!blastData && !logs.length && (
-          <div className="card dashboard-empty">
-            <div className="dashboard-empty-icon">
-              <Activity size={28} color="var(--on-surface-variant)" />
-            </div>
-            <span>Inject a fault into a live service above. Servidor detects it on its own.</span>
-          </div>
-        )}
 
         {/* Reasoning Timeline */}
         <ReasoningTimeline 

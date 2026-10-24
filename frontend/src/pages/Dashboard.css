@@ -212,9 +212,15 @@
   gap: var(--spacing-md);
 }
 
+.dashboard-twin-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-md);
+}
+
 .dashboard-features-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: var(--spacing-md);
 }
 
@@ -766,4 +772,12 @@
 
 @media (max-width: 900px) {
   .health-strip-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .scenario-grid { grid-template-columns: 1fr; }
+  .health-strip-grid { grid-template-columns: 1fr 1fr; }
+  .countdown-banner, .countdown-resolved { flex-wrap: wrap; gap: var(--spacing-sm); }
+  .countdown-time { font-size: 30px !important; }
+  .countdown-info { flex-basis: 100%; }
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Bell, Clock, UserCircle } from 'lucide-react';
-import { getStatus } from '../api/servidor';
+import { Search, Bell, Clock, UserCircle, Zap, Cloud } from 'lucide-react';
+import { getStatus, getConfigStatus } from '../api/servidor';
 
 const PAGE_TITLES = {
   '/': 'Dashboard',
@@ -16,22 +16,24 @@ export default function TopBar() {
   const navigate = useNavigate();
   const title = PAGE_TITLES[location.pathname] || 'Servidor';
   
-  const [searchQuery, setSearchQuery] = useState('');
+  // Sync the search input with ?q= on the incidents page (adjusting state during render)
+  const urlQuery = location.pathname === '/incidents' ? new URLSearchParams(location.search).get('q') || '' : '';
+  const [searchQuery, setSearchQuery] = useState(urlQuery);
+  const [prevUrlQuery, setPrevUrlQuery] = useState(urlQuery);
+  if (urlQuery !== prevUrlQuery) {
+    setPrevUrlQuery(urlQuery);
+    setSearchQuery(urlQuery);
+  }
   const [activeAlerts, setActiveAlerts] = useState(0);
+  const [engines, setEngines] = useState(null);
 
   useEffect(() => {
-    // Sync search input with URL if we are on incidents page
-    if (location.pathname === '/incidents') {
-      const params = new URLSearchParams(location.search);
-      if (params.has('q')) {
-        setSearchQuery(params.get('q'));
-      } else {
-        setSearchQuery('');
-      }
-    } else {
-      setSearchQuery('');
-    }
-  }, [location]);
+    getConfigStatus().then(setEngines).catch(() => setEngines(null));
+  }, []);
+
+  const engineLabel = (id) => (id ? id.split(':')[0].replace(/^./, (c) => c.toUpperCase()) : null);
+  const primary = engineLabel(engines?.llm_engines?.primary) || engineLabel(engines?.llm_engines?.secondary);
+  const fallback = engines?.llm_engines?.primary ? engineLabel(engines?.llm_engines?.secondary) : null;
 
   useEffect(() => {
     // Fetch active alerts for the bell badge
@@ -63,6 +65,16 @@ export default function TopBar() {
     <header className="topbar">
       <h2 className="topbar-title text-page-title">{title}</h2>
       <div className="topbar-actions">
+        {primary && (
+          <span className="topbar-chip" title="Reasoning engines (primary → fallback)">
+            <Zap size={13} /> {primary}{fallback ? ` → ${fallback}` : ''}
+          </span>
+        )}
+        {engines?.platform && (
+          <span className="topbar-chip" title="Where the hospital services run">
+            <Cloud size={13} /> {engines.platform === 'cloud_run' ? 'Cloud Run' : 'Local'}
+          </span>
+        )}
         <div className="topbar-search">
           <Search size={15} className="topbar-search-icon" />
           <input

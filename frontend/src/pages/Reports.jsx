@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { FileText, Download, Calendar, BarChart3, Clock, Filter, ChevronRight, TrendingDown, TrendingUp, Loader, Shield } from 'lucide-react';
 import { getStats, listIncidents, listComplianceReports } from '../api/servidor';
 import './Reports.css';
+import { parseServerTime } from '../utils/time';
 
 const typeColors = {
   SUMMARY: { bg: 'var(--status-active-bg)', color: 'var(--status-active)', border: 'rgba(32, 150, 243, 0.3)' },
@@ -43,7 +44,7 @@ export default function Reports() {
             title: `Compliance Report — ${r.incident_id}`,
             type: 'COMPLIANCE',
             period: r.incident_id,
-            generated: r.generated_at ? new Date(r.generated_at).toLocaleDateString() : '—',
+            generated: r.generated_at ? parseServerTime(r.generated_at).toLocaleDateString() : '—',
             incidents: 1,
             mttr: formatMTTR(r.duration_seconds),
             trend: 'down',

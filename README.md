@@ -17,6 +17,16 @@ Built with **Google ADK** on **Google Cloud Run**. Reasoning runs on **Groq** fi
 
 The hospital (patients, wards, staff) is a synthetic dataset by design: no real patient data is used. Staff contact details are fictional, so all email goes only to `NOTIFY_EMAIL_TO`.
 
+## Clinical digital twin
+
+The dashboard's centrepiece is a 3D model of the hospital built with Three.js (React Three Fiber): the four live services sit on a holographic infrastructure layer, the hospital's floors, wards and all 166 beds float above them, and data-feed lines connect each service to the wards it serves. When an incident opens, a shockwave leaves the failing service, the feeds turn red and carry the blast upward, and the affected ICU beds light up ward by ward.
+
+- Drag to orbit, pinch or scroll to zoom, two fingers or right-drag to pan; works with touch and trackpads
+- Click a ward to fly the camera to it; hover a bed for its protocol and NEWS2 score, or a service for its live latency and revision
+- "Explode floors" separates the floors like a product teardown view; fullscreen for presenting
+- Every past incident can be replayed in 3D from its detail page
+- Falls back to the 2D panels when WebGL is unavailable
+
 ## Fault injection
 
 "Inject fault" breaks a real service. On Cloud Run it deploys a new revision with a defect (`memory_pressure`, `cpu_spike` or `network_partition`), the same way a bad release reaches production. The agent is not told: it has to notice through its own probes. Locally, the fault is switched on in-process.
